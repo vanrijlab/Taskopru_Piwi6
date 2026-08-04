@@ -16,7 +16,7 @@ Miesen, Rebecca Halbach, Ronald P. van Rij
 
 
 
-###**Bash scripts, and R commands that are used to generate corresponding figures are below:**
+### **Bash scripts, and R commands that are used to generate corresponding figures are below:**
 
 Figure 2B 
 •	BowtieMapping_to_albopictus_genome.sh
