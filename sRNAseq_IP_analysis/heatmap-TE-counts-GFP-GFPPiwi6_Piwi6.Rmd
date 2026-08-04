@@ -1,0 +1,137 @@
+---
+title: "heatmap-TE-counts-GFP-GFPPiwi6"
+output: html_document
+date: "2026-05-04"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/phd/Piwi6_revision/small RNA data GFP-IP/GFP-Piwi6 counts")
+```
+
+```{r}
+library(ggplot2)
+library(patchwork)
+library(tidyverse)
+library(wesanderson)
+library("RColorBrewer")
+library(tidyr)
+library(dplyr)
+```
+
+small RNA counts in GFP, GFP-Piwi6, GFP-Piwi6-YK mapping to TE annoation from Lau lab was saved in an excel sheet. Counts were normalized to million miRNAs, and the ratios of  GFP-Piwi6/GFP normalized counts were calculated. The TEs with >2 ratio (which was 641 TEs) were saved those in a different .csv file named "nrm_counts_filtered_morethan_2_GFP-Piwi6overGFP". 
+```{r}
+nrmcounts_TE <- df  <- read_delim(
+    "nrm_counts_filtered_morethan_2_GFP-Piwi6overGFP.csv",
+    delim = ";",
+    col_names = c("TE","GFP", "GFP-Piwi6", "GFP-Piwi6-YK"),
+    col_types = cols(
+        col_character(),
+        col_number(),
+        col_number(),
+        col_number()
+    ),
+    locale = locale(decimal_mark = ",")
+)
+```
+
+all TE counts
+```{r}
+nrmcounts_long <- nrmcounts_TE %>%
+  filter(`GFP-Piwi6` > 1000) %>%   # filter at TE level
+  select(TE, GFP, `GFP-Piwi6`) %>%
+  pivot_longer(
+    cols = c(GFP, `GFP-Piwi6`),
+    names_to = "Condition",
+    values_to = "Expression"
+  )
+
+```
+
+TEs were ordered by TE expression in GFP-Piwi6.
+Figure S5A
+```{r}
+nrmcounts_long <- nrmcounts_TE %>%
+  filter(`GFP-Piwi6` > 1000) %>%
+  select(TE, GFP, `GFP-Piwi6`) %>%
+  arrange(desc(`GFP-Piwi6`)) %>%              # order by Piwi6 signal
+  mutate(TE = factor(TE, levels = rev(TE))) %>%  # keep this order in plot
+  pivot_longer(
+    cols = c(GFP, `GFP-Piwi6`),
+    names_to = "Condition",
+    values_to = "Expression"
+  )
+
+min_val  <- min(nrmcounts_long$Expression, na.rm = TRUE)
+max_val  <- max(nrmcounts_long$Expression, na.rm = TRUE)
+mean_val <- mean(nrmcounts_long$Expression, na.rm = TRUE)
+
+heatmap_all_more_than_1000_countsinGFPPiwi6 <- ggplot(nrmcounts_long, aes(x = Condition, y = TE, fill = Expression)) +
+  geom_tile() +
+  scale_fill_gradient2(
+    low = "#E3072A",
+    mid = "white",
+    high = "#0A8974",
+    midpoint = mean_val,
+    limits = c(min_val, max_val)
+  ) +
+  theme_minimal() +
+  theme(
+    legend.title = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.title = element_blank()
+  )
+heatmap_all_more_than_1000_countsinGFPPiwi6
+png(file="heatmap_all_more_than_1000_countsinGFPPiwi6.png",
+    width=322, height=484)
+heatmap_all_more_than_1000_countsinGFPPiwi6
+dev.off()
+```
+
+TEs were ordered by TE expression in GFP-Piwi6.
+Only taking the top20 of the TEs that are expressed highest in GFP-Piwi6 with TE names.
+Figure 3C
+```{r}
+top20_long <- nrmcounts_TE %>%
+  filter(`GFP-Piwi6` > 1000) %>%
+  select(TE, GFP, `GFP-Piwi6`) %>%
+  arrange(desc(`GFP-Piwi6`)) %>%
+  slice_head(n = 20) %>%
+  mutate(
+    TE_label = TE %>%
+      sub("^TE@", "", .) %>%
+      sub("^(.*)_family[-_](.*)@(.*)$", "\\3 family-\\2", .) %>%
+      sub("_", "/", .),
+    TE_label = factor(TE_label, levels = rev(TE_label))
+  ) %>%
+  pivot_longer(
+    cols = c(GFP, `GFP-Piwi6`),
+    names_to = "Condition",
+    values_to = "Expression"
+  )
+
+top20_inGFPPiwi6_heatmap <- ggplot(top20_long, aes(x = Condition, y = TE_label, fill = Expression)) +
+  geom_tile() +
+  scale_fill_gradient2(
+   low = "#E3072A",
+    mid = "white",
+    high = "#0A8974",
+    midpoint = mean_val,
+    limits = c(min_val, max_val)
+  )  +
+  theme_minimal() +
+  theme(
+    legend.title = element_blank(),
+    axis.text.y = element_text(size = 7),
+    axis.ticks.y = element_blank(),
+    axis.title = element_blank()
+  )
+top20_inGFPPiwi6_heatmap
+png(file="top20_inGFPPiwi6_heatmap.png",
+    width=242, height=484)
+top20_inGFPPiwi6_heatmap
+dev.off()
+
+```
+
