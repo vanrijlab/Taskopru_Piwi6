@@ -1,9 +1,6 @@
 ### **Scripts/command lines**
--
--
--
--
--
+*
+*
 <div align="center">
   
 ## **The piRNA pathway mediates transcriptional silencing of LTR retrotransposons in ovaries and somatic tissues of *Aedes* mosquitoes**
