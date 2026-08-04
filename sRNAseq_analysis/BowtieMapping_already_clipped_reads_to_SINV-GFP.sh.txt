@@ -1,0 +1,71 @@
+#!/bin/bash -l
+#changed this script to map already clipped reads to SINV-GFP
+#$ -S /bin/bash
+#$ -cwd
+#$ -V
+#$ -N mapping
+#$ -e ./map_err.txt
+#$ -q all.q@narrativum.umcn.nl
+
+#requires: Bowtie v0.12.7 (Langmead et al., Genome Biol, 2009, PMID:19261174)
+
+#Bowtie Index must be prepared in advance
+#Needs to be done only once
+#with bowtie-build AnnotationFiles/SINV-GFP.fa BowtieindexSINV-GFP
+
+
+date=$(date +%Y%m%d)
+
+WORKDIR=`pwd`
+
+mkdir "${date}".BowtieMapping
+cd "${date}".BowtieMapping || { echo "Cannot change to specified directory"; exit 1; }
+
+
+#############################################
+#########General settings####################
+#############################################
+
+#path to bowtie index (change for SINV)
+index=$HOME/SINV-GFP/BowtieIndex_SINV-GFP/BowtieIndex_SINV-GFP
+
+#number of max mismatches allowed
+mismatch=1
+
+echo "This script was run on $(date)
+        with
+        Index: "${index}"
+        Max. number of mismatches: "${mismatch}"
+        Results will be stored in the folder: "${date}".BowtieMapping"
+
+echo -e "\n\n"
+
+
+###############################################
+###mapping with already clipped files #################
+###############################################
+
+
+#Run for all clipped.fq files in working directory#
+
+#!/bin/bash -l
+for files in "${WORKDIR}"/*clipped.fq; do
+	INFILE="${files}"
+        FILENAME=$(echo $(basename "${files}") | sed 's/\.clipped.fq$//')
+        #Map with bowtie
+        #options:
+        #-k 1 --best: for multimappers, only give one (only the best) alignment
+        #-v: number of mismatches
+        #-S output is SAM file
+        #samtools -F 4: don't print unmapped reads
+
+        OUTBAM="${FILENAME}"_SINV-GFP.bam
+
+        bowtie "${index}" "${files}" --best -k 1 --threads 24 -t -v "${mismatch}" -S |\
+                samtools view -Sb -F 4 - | samtools sort - -o "${OUTBAM}"
+
+        OUTBED="${FILENAME}"_SINV-GFP.bed
+        bedtools bamtobed -i "${OUTBAM}" > "${OUTBED}"
+
+done
+cd "${WORKDIR}"
