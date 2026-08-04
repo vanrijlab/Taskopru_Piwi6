@@ -1,0 +1,48 @@
+#These lines of commands show how 28 AalERV1 regions were found. 
+#You need to GCF_006496715.1_Aalbo_primary.1_genomic.fna in the directory. 
+
+#First make a blast directory
+makeblastdb -in GCF_006496715.1_Aalbo_primary.1_genomic.fna -dbtype nucl -out GCF_006496715.1_Aalbo_primary.1_genomic.db
+#Retrive the FASTA sequence of the originally identified AalERV1 locus (NW_021837045.1_146399653-146407556) from the genome.
+bedtools getfasta -fi GCF_006496715.1_Aalbo_primary.1_genomic.fna -bed NW_021837045.1:146399653-146407556.bed > NW_021837045.1:146399653-146407556.fa
+#BLASTn search against the same genome, output is named three here, as there are expected to be three ORFs. 
+blastn -query NW_021837045.1:146399653-146407556.fa -db GCF_006496715.1_Aalbo_primary.1_genomic.db -out three.out -outfmt 6
+#sort according to the length of the results
+cat three.out | sort -k4n > sorted_length_three.out
+#filter the ones with a minimum length of 7000 nucleotides
+cat sorted_length_three.out | awk '$4>7000 {print$0}' |awk 'BEGIN{OFS="\t"}{print $2, $9, $10}' > three.bed
+#if the elements are in antisense orientation, where the start site ($2) is bigger than the end sites, reverse the coordinates.  
+awk '$2 > $3 { temp = $3; $3 = $2; $2 = temp } 1' OFS='\t' three.bed > orderedthree.bed
+#see the output below and also in Supplementary Table S8.
+#ezgit@octarine:~/AlbCanu/AnnotationFiles$ cat orderedthree.bed
+#NW_021839020.1  49440331        49447338
+#NW_021838549.1  195388  202477
+#NW_021838443.1  3566184 3573318
+#NW_021838465.1  97014947        97022302
+#NW_021838190.1  1015081 1022603
+#NW_021837600.1  22350691        22358291
+#NW_021837156.1  35936832        35944534
+#NW_021837045.1  92943148        92950889
+#NW_021837045.1  146399654       146407556
+#NW_021837046.1  39660383        39668274
+#NW_021839020.1  15603126        15611018
+#NW_021837045.1  94945995        94953890
+#NW_021838909.1  8962227 8970122
+#NW_021839020.1  34709752        34717647
+#NW_021837489.1  25242329        25250225
+#NW_021837489.1  42924452        42932341
+#NW_021838576.1  97882906        97890807
+#NW_021838909.1  1829801 1837701
+#NW_021837046.1  21962233        21970135
+#NW_021838153.1  7827714 7835618
+#NW_021838762.1  317462  325360
+#NW_021837069.1  612770  620667
+#NW_021838576.1  14281325        14289216
+#NW_021839121.1  154880  162779
+#NW_021839086.1  2012655 2020555
+#NW_021838868.1  13869   21777
+#NW_021837045.1  64008423        64016326
+#NW_021837600.1  5396367 5404268
+#Retrive the FASTA sequence from these 28 regions
+bedtools getfasta -fi GCF_006496715.1_Aalbo_primary.1_genomic.fna -bed orderedthree.bed > three.fa
+#Manually check and take the FASTA of the reverse complement of the elements that are in antisense orientation to the genome (10 out of 28 elements) and merge them together with the FASTA of the elements that are sense to the genome. Generate a multiple sequence alignment of FASTA sequences from these 28 AalERV1 loci and use it as an input in EMBOSS Cons to generate the consensus sequence. 
