@@ -1,18 +1,17 @@
 ### **Scripts/command lines**
-
-
-
-
+-
+-
+-
+-
+-
 <div align="center">
   
-## **The piRNA pathway mediates transcriptional silencing of**
-## **LTR retrotransposons in ovaries and somatic**
-## **tissues of *Aedes* mosquitoes**
+## **The piRNA pathway mediates transcriptional silencing of LTR retrotransposons in ovaries and somatic tissues of *Aedes* mosquitoes**
 
 
-Ezgi Taşköprü, Nynke B. van Eijk, Femke A. H. van Hout, Marianna Bacchi, Gijs J.
-Overheul, Charlotte Linthout, Constantianus J. M. Koenraadt, Jieqiong Qu, Pascal
+Ezgi Taşköprü, Nynke B. van Eijk, Femke A. H. van Hout, Marianna Bacchi, Gijs J. Overheul, Charlotte Linthout, Constantianus J. M. Koenraadt, Jieqiong Qu, Pascal
 Miesen, Rebecca Halbach, Ronald P. van Rij
+
 </div>
 
 
