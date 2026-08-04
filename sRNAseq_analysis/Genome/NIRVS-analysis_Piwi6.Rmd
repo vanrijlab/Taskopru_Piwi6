@@ -1,0 +1,203 @@
+---
+title: "NIRVS-analysiswithPiwi6"
+output: html_document
+date: '2023-07-05'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(ggplot2)
+library(patchwork)
+library(tidyverse)
+library(wesanderson)
+library("RColorBrewer")
+library(ggrepel)
+```
+
+The aim of this script/command line is to get the NIRVS (nrEVE-mapping piRNA) counts
+The analysis was run in Piwi6analysis/NIRVS and the output was saved in H drive: H:\MMB NCMLS\Ezgi\Piwi6-paper-R\sRNA analysis\endogenous-sRNA\NIRVS analysis\outputfrombash 
+```{bash}
+ezgit@narrativum:~/Piwi6analysis/NIRVS$ cat NIRVS_20230705.sh
+#This script was written on 20230103 to be able to count the number of piRNAs that overlap with the NIRVS
+#it finds the counts that map antisense and sense to the NIRVS separately. 
+#Finds the number of miRNAs in each sample by intersecting with miRNA annotation U4.4_microRNAs.bed). Takes the counts and normalizes the count+1 to million miRNAs. 
+#with the paste command, it creates a tab delimited file with all the rawcounts+1 normalized to reads per million miRNAs and takes the log2 of those values
+#to  be plotted in scatter plots.
+#piRNAs2 are the reads from 25-30nt
+#also can calculate the log2 normalized values to WT and can record them as joined_piRNAs2_NIRVS_opp/same_RPMMplus1_nrmtoWT_log2.txt
+WORKDIR=`pwd`
+for files in "${WORKDIR}"/*.piRNAs.bed; do
+        FILENAME=$(echo $(basename "${files}") | sed 's/\.piRNAs.bed$//')
+        PIRNA="${FILENAME}".piRNAs.bed
+        NIRVS_same="${FILENAME}".piRNAs_NIRVS_same.bed
+        NIRVS_opp="${FILENAME}".piRNAs_NIRVS_opp.bed
+        MIRNACOUNTS=$(bedtools intersect -a $HOME/U4.4KO_rawfiles/20200928.BowtieMapping/"${FILENAME}".bed -b $HOME/U4.4_microRNAs.bed | awk 'END{print NR}')
+
+echo "The total number of miRNAs in $FILENAME is $MIRNACOUNTS"
+#counting the piRNAs that are mapped to the opposite strand of the NIRVS
+bedtools coverage -S -b "${PIRNA}" -a $HOME/AlbCanu/AnnotationFiles/AlbCanuNIRVS.bed -c | awk -v n=${MIRNACOUNTS} \
+        'BEGIN{OFS="\t"} \
+        {$8 = ($7+1)/n * 1000000} {print$1,$2,$3,$4,$5,$6,$7+1,$8,log($8)/log(2)}' > "${NIRVS_opp}"
+echo "${NIRVS_opp}"
+
+#counting the piRNAs that are mapped to the same strand of the NIRVS
+bedtools coverage -s -b "${PIRNA}" -a $HOME/AlbCanu/AnnotationFiles/AlbCanuNIRVS.bed -c | awk -v n=${MIRNACOUNTS} \
+        'BEGIN{OFS="\t"} \
+        {$8 = ($7+1)/n * 1000000} {print$1,$2,$3,$4,$5,$6,$7+1,$8,log($8)/log(2)}' > "${NIRVS_same}"
+echo "${NIRVS_same}"
+done
+
+#then I want to have rows with clusters and columns only showing the log2(RPMM+1) from each library. I need to#print the column 9 from each file
+#for the opposite strand, and also add a opposite sign as and extra column at the end.
+paste -d "\t" *piRNAs_NIRVS_opp.bed | awk -v OFS="\t" '{print$1,$2,$3,$4,$5,$6,$9,$18,$27,$36,$45,$54,$63,"-"}' > joined_piRNAs_NIRVS_opp_log2RPMMplus1.txt
+#for the same strand and also add a same  sign as and extra column at the end
+paste -d "\t" *piRNAs_NIRVS_same.bed | awk -v OFS="\t" '{print$1,$2,$3,$4,$5,$6,$9,$18,$27,$36,$45,$54,$63,"+"}' > joined_piRNAs_NIRVS_same_log2RPMMplus1.txt
+#join both to be plotted in R
+cat joined_piRNAs_NIRVS_opp_log2RPMMplus1.txt joined_piRNAs_NIRVS_same_log2RPMMplus1.txt > joined_piRNAs_NIRVS_all_log2RPMMplus1_20230705.txt
+
+#if you want to use log2 normalized to WT
+#for the opposite strand
+paste -d "\t" *piRNAs_NIRVS_opp.bed | awk -v OFS="\t" '{print$1,$2,$3,$4,$5,$6,$8/$8,$17/$8,$26/$8,$35/$8,$44/$8,$53/$8,$62/$8}' | awk -v OFS="\t" '{print$1,$2,$3,$4,$5,$6,log($8)/log(2),log($9)/log(2),log($10)/log(2),log($11)/log(2),log($12)/log(2),log($13)/log(2)}' > joined_piRNAs_NIRVS_opp_RPMMplus1_nrmtoWT_log2_20230705.txt
+#for the same strand
+paste -d "\t" *piRNAs_NIRVS_same.bed | awk -v OFS="\t" '{print$1,$2,$3,$4,$5,$6,$8/$8,$17/$8,$26/$8,$35/$8,$44/$8,$53/$8,$62/$8}' | awk -v OFS="\t" '{print$1,$2,$3,$4,$5,$6,log($8)/log(2),log($9)/log(2),log($10)/log(2),log($11)/log(2),log($12)/log(2),log($13)/log(2)}' > joined_piRNAs_NIRVS_same_RPMMplus1_nrmtoWT_log2_20230705.txt
+```
+
+saved the joined_piRNAs_NIRVS_all_log2RPMMplus1_20230705 in H:\MMB NCMLS\Ezgi\Piwi6-paper-R\sRNA analysis\endogenous-sRNA\NIRVS analysis\outputfrombash 
+
+```{r}
+#read the output
+NIRVS_all <- read_table("./outputfrombash/joined_piRNAs_NIRVS_all_log2RPMMplus1_20230705.txt",col_names=c("contig","start","end","size","name","strand","WT","CTRL#1","CTRL#6","PIWI5KO#A","PIWI5KO#O","PIWI6KO#10","PIWI6KO#52","strandpiRNAmapping"), col_types = c(col_character(), col_number(), col_number(),col_number(),col_character(), col_character(),col_number(), col_number(),col_number(),col_number(),col_number(),col_number(),col_number(),col_character()))
+NIRVS_all <- as.data.frame(NIRVS_all)
+strand <- factor(NIRVS_all$strandpiRNAmapping, levels = c("+","-"))
+```
+
+
+Figures
+```{r}
+#Figure S4B right panel
+NIRVS_all_plot_wtvspiwi6ko <- ggplot(NIRVS_all, aes(x=NIRVS_all$WT, y=c(NIRVS_all$`PIWI6KO#10`+NIRVS_all$ `PIWI6KO#52`)/2)) + geom_point(size=6, aes(colour = factor(strand)), alpha = .6) + theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank()) + xlim(-4, 12) + ylim(-4,12) + scale_color_manual(values = c("-" = "#0A8974","+"= "gray"))+ geom_abline(slope=1,linetype="dashed", color="black")
+
+png(file="NIRVS_all_plot_wtvspiwi6ko.png",
+    width=484, height=484)
+NIRVS_all_plot_wtvspiwi6ko
+dev.off()
+
+#Figure S4B left panel
+NIRVS_all_plot_ctrlvspiwi6ko <- ggplot(NIRVS_all, aes(x=c(NIRVS_all$`CTRL#1`+NIRVS_all$`CTRL#6`)/2, y=c(NIRVS_all$`PIWI6KO#10`+NIRVS_all$ `PIWI6KO#52`)/2)) + geom_point(size=6, aes(colour = factor(strand)), alpha = .6) + theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank()) + xlim(-4, 12) + ylim(-4,12) + scale_color_manual(values = c("-" = "#0A8974","+"= "gray"))+ geom_abline(slope=1,linetype="dashed", color="black")
+
+png(file="NIRVS_all_plot_ctrlvspiwi6ko.png",
+    width=484, height=484)
+NIRVS_all_plot_ctrlvspiwi6ko
+dev.off()
+
+#Figure S3C
+NIRVS_plot_10vs52 <- ggplot(NIRVS_all, aes(x=NIRVS_all$`PIWI6KO#10`, y=NIRVS_all$`PIWI6KO#52`)) + geom_point(size=6, aes(colour = factor(strand)), alpha = .6) +theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank()) + xlim(-4, 12) + ylim(-4,12) + scale_color_manual(values = c("-" = "#0A8974","+"= "gray"))+ geom_abline(slope=1,linetype="dashed", color="black")
+
+
+png(file="NIRVS_plot_10vs52.png",
+    width=484, height=484)
+NIRVS_plot_10vs52
+dev.off()
+
+```
+
+```{r}
+NIRVS_opp <- read_table("./outputfrombash/joined_piRNAs_NIRVS_opp_RPMMplus1_nrmtoWT_log2_20230705.txt",col_names=c("contig","start","end","size","name","strand","CTRL#1","CTRL#6","PIWI5KO#A","PIWI5KO#O","PIWI6KO#10","PIWI6KO#52"), col_types = c(col_character(), col_number(), col_number(),col_number(),col_character(), col_character(), col_number(),col_number(),col_number(),col_number(),col_number(),col_number()))
+NIRVS_opp <- as.data.frame(NIRVS_opp)
+NIRVS_opp <- NIRVS_opp[order(NIRVS_opp$size,decreasing=TRUE),]
+
+NIRVS_opptoplot <- data.frame(cbind(c(NIRVS_opp$name,NIRVS_opp$name,NIRVS_opp$name,NIRVS_opp$name,NIRVS_opp$name,NIRVS_opp$name),c(rep("CTRL#1",456),rep("CTRL#6",456),rep("PIWI5KO#A",456),rep("PIWI5KO#O",456),rep("PIWI6KO#10",456),rep("PIWI6KO#52",456)),c(as.numeric(as.character(NIRVS_opp$`CTRL#1`)),as.numeric(as.character(NIRVS_opp$`CTRL#6`)),as.numeric(as.character(NIRVS_opp$`PIWI5KO#A`)),as.numeric(as.character(NIRVS_opp$`PIWI5KO#O`)),as.numeric(as.character(NIRVS_opp$`PIWI6KO#10`)),as.numeric(as.character(NIRVS_opp$`PIWI6KO#52`))),c(rep(as.numeric(NIRVS_opp$size),6))))
+#sort according to the size 
+
+NIRVS_opptoplot <- NIRVS_opptoplot[order(as.numeric(as.character(NIRVS_opptoplot$X4),decreasing=TRUE)),]
+
+NIRVS_opptoplot$X1 <- factor(x = NIRVS_opptoplot$X1,levels = as.character(unique(NIRVS_opptoplot$X1)))
+
+#sorted in a way that the longest EVE is on top
+
+NIRVS_opp_heatmap <- ggplot(NIRVS_opptoplot,aes(NIRVS_opptoplot$X2,NIRVS_opptoplot$X1,fill = c(as.numeric(as.character(NIRVS_opptoplot$X3))))) + geom_tile() + scale_fill_gradient2(low = "#5FADCB", high = "#E2741E", midpoint = 0 , limits = c(-6,6)) +theme(legend.title=element_blank()) +theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank())
+
+png(file="NIRVS_opp_heatmap.png",
+    width=484, height=484)
+NIRVS_opp_heatmap
+dev.off()
+
+
+NIRVS_opp_heatmap_piwi6 <- ggplot(NIRVS_opptoplot,aes(NIRVS_opptoplot$X2,NIRVS_opptoplot$X1,fill = c(as.numeric(as.character(NIRVS_opptoplot$X3))))) + geom_tile() + scale_fill_gradient2(low = "#5FADCB", high = "#E2741E", midpoint = 0 , limits = c(-6,6)) +theme(legend.title=element_blank()) +theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank())+scale_x_discrete(limits=c("CTRL#1","CTRL#6","PIWI6KO#10","PIWI6KO#52"))
+
+png(file="NIRVS_opp_heatmap_piwi6.png",
+    width=484, height=484)
+NIRVS_opp_heatmap_piwi6
+dev.off()
+
+
+
+NIRVS_same <- read_table("./outputfrombash/joined_piRNAs_NIRVS_same_RPMMplus1_nrmtoWT_log2_20230705.txt",col_names=c("contig","start","end","size","name","strand","CTRL#1","CTRL#6","PIWI5KO#A","PIWI5KO#O","PIWI6KO#10","PIWI6KO#52"), col_types = c(col_character(), col_number(), col_number(),col_number(),col_character(), col_character(), col_number(),col_number(),col_number(),col_number(),col_number(),col_number()))
+NIRVS_same <- as.data.frame(NIRVS_same)
+NIRVS_same <- NIRVS_same[order(NIRVS_same$size,decreasing=TRUE),]
+
+NIRVS_sametoplot <- data.frame(cbind(c(NIRVS_same$name,NIRVS_same$name,NIRVS_same$name,NIRVS_same$name,NIRVS_same$name,NIRVS_same$name),c(rep("CTRL#1",456),rep("CTRL#6",456),rep("PIWI5KO#A",456),rep("PIWI5KO#O",456),rep("PIWI6KO#10",456),rep("PIWI6KO#52",456)),c(as.numeric(as.character(NIRVS_same$`CTRL#1`)),as.numeric(as.character(NIRVS_same$`CTRL#6`)),as.numeric(as.character(NIRVS_same$`PIWI5KO#A`)),as.numeric(as.character(NIRVS_same$`PIWI5KO#O`)),as.numeric(as.character(NIRVS_same$`PIWI6KO#10`)),as.numeric(as.character(NIRVS_same$`PIWI6KO#52`))),c(rep(as.numeric(NIRVS_same$size),6))))
+#sort according to the size 
+
+NIRVS_sametoplot <- NIRVS_sametoplot[order(as.numeric(as.character(NIRVS_sametoplot$X4),decreasing=TRUE)),]
+
+NIRVS_sametoplot$X1 <- factor(x = NIRVS_sametoplot$X1,levels = as.character(unique(NIRVS_sametoplot$X1)))
+
+#sorted in a way that the longest EVE is on top
+
+NIRVS_same_heatmap <- ggplot(NIRVS_sametoplot,aes(NIRVS_sametoplot$X2,NIRVS_sametoplot$X1,fill = c(as.numeric(as.character(NIRVS_sametoplot$X3))))) + geom_tile() + scale_fill_gradient2(low = "#5FADCB", high = "#E2741E", midpoint = 0 , limits = c(-6,6)) +theme(legend.title=element_blank()) +theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank())
+
+png(file="NIRVS_same_heatmap.png",
+    width=484, height=484)
+NIRVS_same_heatmap
+dev.off()
+
+
+NIRVS_same_heatmap_piwi6 <- ggplot(NIRVS_sametoplot,aes(NIRVS_sametoplot$X2,NIRVS_sametoplot$X1,fill = c(as.numeric(as.character(NIRVS_sametoplot$X3))))) + geom_tile() + scale_fill_gradient2(low = "#5FADCB", high = "#E2741E", midpoint = 0 , limits = c(-6,6)) +theme(legend.title=element_blank()) +theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank())+scale_x_discrete(limits=c("CTRL#1","CTRL#6","PIWI6KO#10","PIWI6KO#52"))
+
+png(file="NIRVS_same_heatmap_piwi6.png",
+    width=484, height=484)
+NIRVS_same_heatmap_piwi6
+dev.off()
+
+```
+
+Figure S4A
+counted all the sense and antisense mapping/normalized piRNA counts and recorded them in NIRVS_total_sense_antisense_RPMMplus1_2.txt.
+As below:
+sample	orientation	fold
+WT	antisense	8783.28
+CTRL#1	antisense	7009.3
+CTRL#6	antisense	4891.76
+PIWI5KO#O	antisense	1287.71
+PIWI5KO#A	antisense	1655.67
+PIWI6KO#10	antisense	8867.55
+PIWI6KO#52	antisense	8537.8
+WT	sense	574.796
+CTRL#1	sense	409.852
+CTRL#6	sense	364.861
+PIWI5KO#O	sense	174.742
+PIWI5KO#A	sense	177.201
+PIWI6KO#10	sense	497.023
+PIWI6KO#52	sense	523.164
+```{r}
+allNIRVS <- read_table("./outputfrombash/NIRVS_total_sense_antisense_RPMMplus1_2.txt",col_names=TRUE, col_types = c(col_character(),col_character(), col_number()))
+allNIRVS <- as.data.frame(allNIRVS)
+
+#Figure S4A
+allNIRVS_barplot <-ggplot(allNIRVS, aes(fill=allNIRVS$orientation, y=allNIRVS$fold, x=allNIRVS$sample))+  geom_bar(width = 0.7, position = position_dodge(width=0.7), stat="identity",color="black")+scale_x_discrete(limits=c("WT","CTRL#1","CTRL#6","PIWI6KO#10","PIWI6KO#52")) +  scale_fill_manual(values = c("antisense" = "#0A8974","sense"= "gray"))+theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank(),strip.text.y=element_text(angle = 360))
+
+png(file="allNIRVS_barplot.png",
+    width=484, height=484)
+allNIRVS_barplot
+dev.off()
+```
+
+
+
+
+

@@ -1,0 +1,269 @@
+---
+title: "transposon-piRNAs"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(patchwork)
+library(tidyverse)
+library(wesanderson)
+library("RColorBrewer")
+library(ggrepel)
+```
+
+
+After mapping to the genome, take the bed files, make a size.bed file, separate siRNAs and piRNAs and record them. Then intersect these piRNAs with transpooson annotation (RepeatMasker: GCF_006496715.1_Aalbo_primary.1_rm.out.bed) and record them as sense mapping, and antisense mapping ones. 
+```{bash}
+ezgit@octarine:~/Piwi6analysis$ cat transposons_piRNAs_2530_strandedness_20230424.sh
+#modified on 20230424
+WORKDIR=`pwd`
+for files in "${WORKDIR}"/*.bed; do
+        FILENAME=$(echo $(basename "${files}") | sed 's/\.bed$//')
+        BED="${FILENAME}".bed
+        SIZE="${FILENAME}".size.bed
+        SIRNA="${FILENAME}".siRNAs.bed
+        PIRNA="${FILENAME}".piRNAs.bed
+
+        awk 'BEGIN { OFS = "\t" } { $7 = $3 - $2 } 1' "${BED}" > "${SIZE}"
+        cat "${SIZE}" | awk '$7 ==21' > "${SIRNA}"
+        cat "${SIZE}" | awk '$7 >=25 && $7 <=30' > "${PIRNA}"
+
+transposons_same="${FILENAME}".piRNAs_transposons_same.bed
+transposons_opp="${FILENAME}".piRNAs_transposons_opp.bed
+
+bedtools intersect -s -b "${PIRNA}" -a $HOME/AlbCanu/AnnotationFiles/GCF_006496715.1_Aalbo_primary.1_rm.out.bed -wa -wb > "${transposons_same}"
+echo "Number of same-strand mappers in ${FILENAME}"
+wc -l "${transposons_same}"
+
+bedtools intersect -S -b "${PIRNA}" -a $HOME/AlbCanu/AnnotationFiles/GCF_006496715.1_Aalbo_primary.1_rm.out.bed -wa -wb > "${transposons_opp}"
+echo "Number of opposite-strand mappers in ${FILENAME}"
+wc -l "${transposons_opp}"
+
+echo "done with ${FILENAME}"
+done
+```
+
+
+Take the .piRNAs.bed files, intersect with the transposon annotation (RepeatMasker: GCF_006496715.1_Aalbo_primary.1_rm.out.bed) to find the total number of reads for each transposon family (not sense and antisense separated)
+```{bash}
+ezgit@octarine:~/Piwi6analysis/transposons-25-30nt/not-stranded_familycounts$ cat 20230424-transposon-familycounts_not-stranded.sh
+#modified the script to inc;lude only 25 to 30 nt reads on 20210628
+#modified the script on 20200327 to plot the counts sense and antisense normalized
+#last modified on 20230424-piRNAs2 piRNAs and having total transposon mappers instead of sense and antisense separates
+WORKDIR=`pwd`
+for files in "${WORKDIR}"/*.piRNAs.bed; do
+        FILENAME=$(echo $(basename "${files}") | sed 's/\.piRNAs.bed$//')
+        PIRNA="${FILENAME}".piRNAs.bed
+        transposons="${FILENAME}".piRNAs_transposons.bed
+
+
+#how it looks
+#NW_021837045.1  4565    6652    RepeatMasker    .       +       rnd-2_family-11_LINE/RTE-BovB   Unspecified     NW_021837045.1  5642    5669    #K00201:271:H2W7FBBXY:8:1103:15777:15996 255     -       27
+#transposon names are on col7
+#It takes only the piRNA_transposon bed files in the directory and counts the number of alignments for each transposon family.
+#LTR:LTR-retrotransposons
+#SINE
+#LINE: non-LTR retrotransposons
+#DNA: DNA transposons
+#Helitron: other DNA transposons
+#Satellite: Satellite repeats
+#Simple-Simple repeat (simple in col7 & simple repeat in col8) : other unknown
+#Unknown
+
+bedtools intersect -b "${PIRNA}" -a $HOME/AlbCanu/AnnotationFiles/GCF_006496715.1_Aalbo_primary.1_rm.out.bed -wa -wb > "${transposons}"
+
+count=$(cat "${transposons}" | awk '$7 ~/LTR/' | wc -l)
+echo $count >> "${FILENAME}"_familycounts
+count=$(cat "${transposons}" | awk '$7 ~/LINE/' | wc -l)
+echo $count >> "${FILENAME}"_familycounts
+count=$(cat "${transposons}" | awk '$7 ~/SINE/' | wc -l)
+echo $count >> "${FILENAME}"_familycounts
+count=$(cat "${transposons}" | awk '$7 ~/DNA/' | wc -l)
+echo $count >> "${FILENAME}"_familycounts
+count=$(cat "${transposons}" | awk '$7 ~/Helitron/' | wc -l)
+echo $count >> "${FILENAME}"_familycounts
+count=$(cat "${transposons}" | awk '$7 ~/Satellite/' | wc -l)
+echo $count >> "${FILENAME}"_familycounts
+count=$(cat "${transposons}" | awk '$7 ~/Simple/ || $8 ~/Simple/' | wc -l)
+echo $count >> "${FILENAME}"_familycounts
+count=$(cat "${transposons}" | awk '$7 ~/Unknown/' | wc -l)
+echo $count >> "${FILENAME}"_familycounts
+
+done
+
+echo "LTR" >> families
+echo "LINE" >> families
+echo "SINE" >> families
+echo "DNA" >> families
+echo "Helitron" >> families
+echo "Satellite" >> families
+echo "Simple" >> families
+echo "Unknown" >> families
+
+
+paste -d "\t" *familycounts* families > familycounts.txt
+
+#to have the fraction of transposons in each library, normalizet the read counts to miRNAs
+cat familycounts.txt | awk '{$1 = ($1+1)/3415125 * 1000000; $2 =($2+1)/4901778 * 1000000; $3 = ($3+1)/3439664* 1000000; $4 =($4+1)/5425132* 1000000; $5 =($5+1)/5948042* 1000000; $6 =($6+1)/3639673* 1000000; $7 =($7+1)/3373702* 1000000} {print$1,$2,$3,$4,$5,$6,$7,$8}' > familycounts_nrm.txt
+
+cat familycounts_nrm.txt | awk  '{print$1}' >> familycounts_nrm_grouped.txt
+cat familycounts_nrm.txt | awk  '{print$2}' >> familycounts_nrm_grouped.txt
+cat familycounts_nrm.txt | awk  '{print$3}' >> familycounts_nrm_grouped.txt
+cat familycounts_nrm.txt | awk  '{print$4}' >> familycounts_nrm_grouped.txt
+cat familycounts_nrm.txt | awk  '{print$5}' >> familycounts_nrm_grouped.txt
+cat familycounts_nrm.txt | awk  '{print$6}' >> familycounts_nrm_grouped.txt
+cat familycounts_nrm.txt | awk  '{print$7}' >> familycounts_nrm_grouped.txt
+cat familycounts_nrm.txt | awk  '{print$8}' >> names
+cat familycounts_nrm.txt | awk  '{print$8}' >> names
+cat familycounts_nrm.txt | awk  '{print$8}' >> names
+cat familycounts_nrm.txt | awk  '{print$8}' >> names
+cat familycounts_nrm.txt | awk  '{print$8}' >> names
+cat familycounts_nrm.txt | awk  '{print$8}' >> names
+cat familycounts_nrm.txt | awk  '{print$8}' >> names
+paste -d "\t" familycounts_nrm_grouped.txt names > familycounts_grouped_nostrand.txt
+
+```
+
+Takes familycounts_grouped_nostrand.txt as input
+Figure 2C
+```{r}
+grouped <- read_table("./outputfrombash/familycounts_grouped_nostrand.txt", col_names = c("counts","families"), col_types = c(col_number(),col_character()))
+libraries <- c(rep("WT", 8), rep("CTRL#1",8),rep("CTRL#6",8),rep("PIWI5#A",8),rep("PIWI5#O",8),rep("PIWI6#10",8),rep("PIWI6#52",8))
+
+grouped_df <- as.data.frame(cbind(libraries,grouped))
+value <- grouped_df$counts
+libraries <- grouped_df$libraries
+grouped_df$families <- factor(rep(c("LTR","LINE","SINE","DNA","Helitron", "Satellite", "Simple", "Unknown"),7), levels = c("Unknown","Simple","Satellite","Helitron","DNA","SINE","LINE","LTR"))
+
+#without piwi5
+grouped_df_ctrl <- grouped_df[-c(25:40),]
+value <- grouped_df_ctrl$counts
+libraries <- grouped_df_ctrl$libraries
+
+#to order LTR at the bottom
+grouped_df_ctrl$families <- factor(rep(c("LTR","LINE","SINE","DNA","Helitron", "Satellite","Simple", "Unknown"),5), levels = c("Unknown","Simple","Satellite","Helitron","DNA","SINE","LINE","LTR"))
+
+fractions_TE_grouped_ctrl<- ggplot(grouped_df_ctrl, aes(fill=grouped_df_ctrl$families, y=grouped_df_ctrl$counts, x=grouped_df_ctrl$libraries)) + geom_bar(position="stack", stat="identity", color="black",alpha=0.9) +scale_x_discrete(limits=c("WT","CTRL#1","CTRL#6","PIWI6#10","PIWI6#52")) +scale_fill_manual(values = c("lightgray", "#C2C8E7","#6362A9","#E3072A","#E49C23","#5FAECC","#E27520","#0A8974")) + theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank())
+
+png(file="fractions_TE_notstranded_grouped_Piwi6_withcontrols.png",
+    width=484, height=484)
+fractions_TE_grouped_ctrl
+dev.off()
+```
+
+Figure S4E, left panel 
+```{r}
+#A simple bar graph to show different TE families in the DE-TEs. Take the list of downregulated and upregulated DE-TEs in a text file, counted the upregulated and downregulated DE-TEs and noted them down.
+DE_TEs_bg <- read_table("DETEs_bargraph.txt", col_names = c("up_down","counts","families"), col_types = c(col_character(),col_number(),col_character()))
+DE_TEs_bg_df <- as.data.frame(DE_TEs_bg)
+DE_TEs_bg_df$families <- factor(rep(c("LTR","LINE","SINE","DNA","Helitron","Unknown"),2), levels = c("Unknown","Helitron","DNA","SINE","LINE","LTR"))
+
+DETEs_bargraph <- ggplot(DE_TEs_bg_df, aes(fill=DE_TEs_bg_df$families, y=DE_TEs_bg_df$counts, x=DE_TEs_bg_df$up_down)) + geom_bar(position="stack", stat="identity", color="black",alpha=0.9) +scale_x_discrete(limits=c("upregulated","downregulated")) +scale_fill_manual(values = c("lightgray","#E3072A","#E49C23","#5FAECC","#E27520","#0A8974")) + theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank())
+
+png(file="DETEs_bargraph.png",
+    width=484, height=484)
+DETEs_bargraph
+dev.off()
+
+#Figure S4E, right panel 
+database <- read_table("./DETEs_bargraph_onlydatabase.txt", col_names = c("sample","counts","families"), col_types = c(col_character(),col_number(),col_character()))
+database_df <- as.data.frame(database)
+database_df$families <- factor(c("LTR","LINE","SINE","DNA","Helitron", "Satellite", "Simple", "Unknown"), levels = c("Unknown","Simple","Satellite","Helitron","DNA","SINE","LINE","LTR"))
+
+DETEs_bargraph_database <- ggplot(database_df, aes(fill=database_df$families, x=database_df$sample, y=database_df$counts)) + geom_bar(position="stack", stat="identity", color="black",alpha=0.9) +scale_fill_manual(values = c("lightgray", "#C2C8E7","#6362A9","#E3072A","#E49C23","#5FAECC","#E27520","#0A8974")) + theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank())
+
+png(file="DETEs_bargraph_database.png",
+    width=484, height=484)
+DETEs_bargraph_database
+dev.off()
+```
+
+
+Generating scatter plots of TE-mapping piRNAs
+```{bash}
+ezgit@octarine:~/Piwi6analysis/scatterplots$ cat 20230424_transposon_family_counts_forscatterplot.sh
+#!/bin/bash -l
+#$ -S /bin/bash
+#$ -cwd
+#$ -V
+#$ -N counting
+#$ -e ./count_err.txt
+#$ -q all.q@narrativum.umcn.nl
+
+#changed this script again ON 20230327
+WORKDIR=`pwd`
+#need to use transposon family names and it should be sorted
+cat transposonfamilies.txt | sort -k1,1 > sorted_transposonfamilies.txt
+for files in "${WORKDIR}"/*.piRNAs.bed; do
+        FILENAME=$(echo $(basename "${files}") | sed 's/\.piRNAs.bed$//')
+        transposons_same="${FILENAME}".piRNAs_transposons_same.bed
+        transposons_opp="${FILENAME}".piRNAs_transposons_opp.bed
+        transposons_same_2="${FILENAME}".piRNAs_transposons_same_2.bed
+        transposons_opp_2="${FILENAME}".piRNAs_transposons_opp_2.bed
+        transposons_same_counts="${FILENAME}".piRNAs_transposons_same_counts.bed
+        transposons_opp_counts="${FILENAME}".piRNAs_transposons_opp_counts.bed
+        transposons_same_joined="${FILENAME}".piRNAs_transposons_same_joined
+        transposons_opp_joined="${FILENAME}".piRNAs_transposons_opp_joined
+
+#sort on column 16 because that is the number of counts, if you are not using .size.bed file, it should be column 15, I got an error for this before.
+cat "${transposons_same}" |  awk -v OFS="\t" '{split($7, b, "_"); $16=b[3]};{print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16}' | sort -k 16 > "${transposons_same_2}"
+
+grep -Fwf transposonfamilies.txt "${transposons_same_2}" | awk -v OFS="\t" '{print$16}' | uniq -c | awk -v OFS="\t" '{print $2, $1}'| sort -k1,1 > "${transposons_same_counts}"
+join -a 1 -e 0 -o 0,2.2 sorted_transposonfamilies.txt "${transposons_same_counts}" > "${transposons_same_joined}"
+
+echo "done with same strand counts of ${FILENAME}"
+
+cat "${transposons_opp}" |  awk -v OFS="\t" '{split($7, b, "_"); $16=b[3]};{print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16}' | sort -k 16 > "${transposons_opp_2}"
+
+grep -Fwf transposonfamilies.txt "${transposons_opp_2}" | awk -v OFS="\t" '{print$16}' | uniq -c | awk -v OFS="\t" '{print $2, $1}' | sort -k1,1 > "${transposons_opp_counts}"
+join -a 1 -e 0 -o 0,2.2 sorted_transposonfamilies.txt "${transposons_opp_counts}" > "${transposons_opp_joined}"
+
+echo "done with opposite strand counts of ${FILENAME}"
+done
+
+paste -d "\t" *same_joined | awk -v OFS="\t" '{print$2,$4,$6,$8,$10,$12,$14,$1,"+"}' > same_alljoined.txt
+paste -d "\t" *opp_joined | awk -v OFS="\t" '{print$2,$4,$6,$8,$10,$12,$14,$1,"-"}' > opp_alljoined.txt
+cat same_alljoined.txt opp_alljoined.txt | awk -v OFS="\t" '{print$0}' > alljoined.txt
+cat alljoined.txt | awk '{$1 = ($1+1)/3415125 * 1000000; $2 =($2+1)/4901778 * 1000000; $3 = ($3+1)/3439664* 1000000; $4 =($4+1)/5425132* 1000000; $5 =($5+1)/5948042* 1000000; $6 =($6+1)/3639673* 1000000; $7 =($7+1)/3373702* 1000000} {print$1,$2,$3,$4,$5,$6,$7,$8,$9}' > alljoined_nrm.txt
+
+cat alljoined_nrm.txt |  awk -v OFS="\t" '{print log($1)/log(2), log($2)/log(2), log($3)/log(2), log($4)/log(2), log($5)/log(2), log($6)/log(2), log($7)/log(2), $8, $9}'> alljoined_nrm_log2.txt
+```
+
+```{r}
+transposon_fam <- read_table("./outputfrombash/alljoined_nrm_log2.txt",col_names=c("WT","CTRL#1","CTRL#6","PIWI5KO#A","PIWI5KO#O","PIWI6KO#10","PIWI6KO#52","transposon","strand"), col_types = c(col_number(), col_number(), col_number(),col_number(),col_number(),col_number(),col_number(),col_character(),col_character()))
+#removing not labeled and buffer transposon
+transposon_fam <- transposon_fam[-c(1,2,66,67),]
+transposon_fam <- as.data.frame(transposon_fam)
+strand <- factor(transposon_fam$strand, levels = c("+","-"))
+
+#Figure 2D
+transposons_plot_ctrlvspiwi6ko <- ggplot(transposon_fam, aes(x=c(transposon_fam$`CTRL#1`+transposon_fam$`CTRL#6`)/2, y=(transposon_fam$`PIWI6KO#10`+transposon_fam$`PIWI6KO#52`)/2)) + geom_point(size=6, aes(colour = factor(strand)), alpha = .6) +     theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank()) + xlim(-5, 20) + ylim(-5,20) + scale_color_manual(values = c("-" = "#0A8974","+"= "gray"))+ geom_abline(slope=1,linetype="dashed", color="black")
+
+png(file="transposons_plot_ctrlvspiwi6ko.png",
+    width=484, height=484)
+transposons_plot_ctrlvspiwi6ko
+dev.off()
+
+
+transposons_plot_wtvspiwi6ko <- ggplot(transposon_fam, aes(x=transposon_fam$WT, y=(transposon_fam$`PIWI6KO#10`+transposon_fam$`PIWI6KO#52`)/2)) + geom_point(size=6, aes(colour = factor(strand)), alpha = .6) +     theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank()) + xlim(-5, 20) + ylim(-5,20) + scale_color_manual(values = c("-" = "#0A8974","+"= "gray"))+ geom_abline(slope=1,linetype="dashed", color="black")
+
+png(file="transposons_plot_wtvspiwi6ko.png",
+    width=484, height=484)
+transposons_plot_wtvspiwi6ko
+dev.off()
+
+
+#Figure S3B
+transposons_plot_10vs52 <- ggplot(transposon_fam, aes(x=transposon_fam$`PIWI6KO#10`, y=transposon_fam$`PIWI6KO#52`)) + geom_point(size=6, aes(colour = factor(strand)), alpha = .6) +     theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank()) + xlim(-5, 20) + ylim(-5,20) + scale_color_manual(values = c("-" = "#0A8974","+"= "gray"))+ geom_abline(slope=1,linetype="dashed", color="black")
+transposons_plot_10vs52
+
+png(file="transposons_plot_10vs52.png",
+    width=484, height=484)
+transposons_plot_10vs52
+dev.off()
+```

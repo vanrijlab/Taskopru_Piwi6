@@ -1,0 +1,130 @@
+---
+title: "sRNAanalysis mapping to genome"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(patchwork)
+library(tidyverse)
+library(wesanderson)
+library("RColorBrewer")
+```
+
+The Script below takes the 19-30 nt sizes of reads mapping to the genome, and normalizes to the total number of miRNAs (in millions).
+```{ bash }
+ezgit@octarine:~/Piwi6analysis$ cat readlength_nrmmiRNAs.sh
+#20230423
+WORKDIR=`pwd`
+for files in "${WORKDIR}"/*.bed; do
+        FILENAME=$(echo $(basename "${files}") | sed 's/\.bed$//')
+        BED="${FILENAME}".bed
+        SIZE="${FILENAME}".size_bed
+        SIRNA="${FILENAME}".siRNAs.bed
+        PIRNA="${FILENAME}".piRNAs.bed
+
+        awk 'BEGIN { OFS = "\t" } { $7 = $3 - $2 } 1' "${BED}" > "${SIZE}"
+        cat "${SIZE}" | awk '$7 ==21' > "${SIRNA}"
+        cat "${SIZE}" | awk '$7 >=23 && $7 <=32' > "${PIRNA}"
+
+
+count=$(cat "${SIZE}" | awk '$7==19' | wc -l)
+echo $count >> "${FILENAME}"_sizes
+count=$(cat "${SIZE}" | awk '$7==20' | wc -l)
+#echo "20nt size counts in ${FILENAME} is: ${count}"
+echo $count >> "${FILENAME}"_sizes
+count=$(cat "${SIZE}" | awk '$7==21' | wc -l)
+#echo "21nt size counts in ${FILENAME} is: ${count}"
+echo $count >> "${FILENAME}"_sizes
+count=$(cat "${SIZE}" | awk '$7==22' | wc -l)
+#echo "22nt size counts in ${FILENAME} is: ${count}"
+echo $count >> "${FILENAME}"_sizes
+count=$(cat "${SIZE}" | awk '$7==23' | wc -l)
+#echo "23nt size counts in ${FILENAME} is: ${count}"
+echo $count >> "${FILENAME}"_sizes
+count=$(cat "${SIZE}" | awk '$7==24' | wc -l)
+#echo "24nt size counts in ${FILENAME} is: ${count}"
+echo $count >> "${FILENAME}"_sizes
+count=$(cat "${SIZE}" | awk '$7==25' | wc -l)
+#echo "25nt size counts in ${FILENAME} is: ${count}"
+echo $count >> "${FILENAME}"_sizes
+count=$(cat "${SIZE}" | awk '$7==26' | wc -l)
+#echo "26nt size counts in ${FILENAME} is: ${count}"
+echo $count >> "${FILENAME}"_sizes
+count=$(cat "${SIZE}" | awk '$7==27' | wc -l)
+#echo "27nt size counts in ${FILENAME} is: ${count}"
+echo $count >> "${FILENAME}"_sizes
+count=$(cat "${SIZE}" | awk '$7==28' | wc -l)
+#echo "28nt size counts in ${FILENAME} is: ${count}"
+echo $count >> "${FILENAME}"_sizes
+count=$(cat "${SIZE}" | awk '$7==29' | wc -l)
+#echo "29nt size counts in ${FILENAME} is: ${count}"
+echo $count >> "${FILENAME}"_sizes
+count=$(cat "${SIZE}" | awk '$7==30' | wc -l)
+#echo "30nt size counts in ${FILENAME} is: ${count}"
+echo $count >> "${FILENAME}"_sizes
+count=$(cat "${SIZE}" | awk '$7==31' | wc -l)
+#echo "31nt size counts in ${FILENAME} is: ${count}"
+echo $count >> "${FILENAME}"_sizes
+count=$(cat "${SIZE}" | awk '$7==32' | wc -l)
+#echo "32nt size counts in ${FILENAME} is: ${count}"
+echo $count >> "${FILENAME}"_sizes
+count=$(cat "${SIZE}" | awk '$7==33' | wc -l)
+#echo "33nt size counts in ${FILENAME} is: ${count}"
+echo $count >> "${FILENAME}"_sizes
+
+done
+
+echo "19" >> sizes
+echo "20" >> sizes
+echo "21" >> sizes
+echo "22" >> sizes
+echo "23" >> sizes
+echo "24" >> sizes
+echo "25" >> sizes
+echo "26" >> sizes
+echo "27" >> sizes
+echo "28" >> sizes
+echo "29" >> sizes
+echo "30" >> sizes
+echo "31" >> sizes
+echo "32" >> sizes
+echo "33" >> sizes
+
+paste -d "\t" *_sizes* sizes > counts_all_sizes
+
+
+#normalize the read counts to miRNAs
+cat counts_all_sizes | awk '{$1 = ($1+1)/3415125 * 1000000; $2 =($2+1)/4901778 * 1000000; $3 = ($3+1)/3439664* 1000000; $4 =($4+1)/5425132* 1000000; $5 =($5+1)/5948042* 1000000; $6 =($6+1)/3639673* 1000000; $7 =($7+1)/3373702* 1000000} {print$1,$2,$3,$4,$5,$6,$7,$8}' > readlength_nrmmiRNA.txt
+```
+
+
+Then using the readlength_nrmmiRNA.txt as an input, the script below generates a readlength plot
+Figure 2B
+```{r}
+readlength_2 <- read_table("./outputfrombash/readlength_nrmmiRNA.txt",col_names=c("WT","CTRL#1","CTRL#6","PIWI5KO#A","PIWI5KO#O","PIWI6KO#10","PIWI6KO#52","size"), col_types = c(col_number(),col_number(), col_number(), col_number(),col_number(),col_number(),col_number(),col_number()))
+readlength_2 <- as.data.frame(readlength_2)
+#remove ctrls A and O,
+readlengthsubset_2 <- readlength_2[ -c(4,5) ]
+libraries_2 <- c(rep(c("WT"),15),rep(c("CTRL#1"),15),rep(c("CTRL#6"),15),rep(c("PIWI6KO#10"),15),rep(c("PIWI6KO#52"),15))
+libraries_2 <- factor(libraries_2,levels = c("WT", "CTRL#1","CTRL#6","PIWI6KO#10", "PIWI6KO#52"))
+
+values_2 <- c(readlengthsubset_2$WT,readlengthsubset_2$`CTRL#1`,readlengthsubset_2$`CTRL#6`,readlengthsubset_2$`PIWI6KO#10`,readlengthsubset_2$`PIWI6KO#52`)
+
+#libraries <- c(rep(c("WT"),15),rep(c("CTRL#1"),15),rep(c("CTRL#6"),15),rep(c("PIWI5KO#A"),15),rep(c("PIWI5KO#O"),15),rep(c("PIWI6KO#10"),15),rep(c("PIWI6KO#52"),15))
+#values <- c(readlength$WT,readlength$`CTRL#1`,readlength$`CTRL#6`,readlength$`PIWI5KO#A`,readlength$`PIWI5KO#O`,readlength$`PIWI6KO#10`,readlength$`PIWI6KO#52`)
+size <- c(19:33)
+readlength_df_subset_2 <- data.frame(libraries_2,values_2,size)
+
+plot_readlength_subset_bar_control <- ggplot(readlength_df_subset_2, aes(fill=libraries_2, y=values_2, x=size)) + geom_bar(width = 0.7, position = position_dodge(width=0.7), stat="identity",color="black") + scale_x_continuous(labels=as.character(size),breaks=size)+ scale_fill_manual(values = c("lightgray","#E49C23","#E27520","#0A8974","#5FAECC")) + theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank(),strip.text.y=element_text(angle = 360)) 
+
+png(file="plot_readlength_subset_bar_withcontrols.png",
+    width=689, height=484)
+plot_readlength_subset_bar_control
+dev.off()
+```
+

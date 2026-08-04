@@ -1,0 +1,124 @@
+---
+title: "clusteranalysis"
+output: html_document
+date: '2023-07-05'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(patchwork)
+library(tidyverse)
+library(wesanderson)
+library("RColorBrewer")
+library(ggrepel)
+```
+
+Analyzing piRNAs mapping to core piRNA clusters defined in albopictus in Piwi6 KO lines.
+The script below takes the genome mapped piRNAs as an input. 
+```{bash}
+#This script was written op 20230102 to be able to count the number of piRNAs that overlap with the core clusters defined by (Qu J, Betting V, van Iterson R ...Chromatin profiling identifies transcriptional readthrough as a conserved mechanism for piRNA biogenesis in mosquitoes,Cell Reports, 2023; 42)
+#with the paste command, it creates a tab delimited file with all the rawcounts+1 normalized to reads per million miRNAs and takes the log2 of those values
+#to  be plotted in scatter plots.
+
+WORKDIR=`pwd`
+for files in "${WORKDIR}"/*.piRNAs.bed; do
+        FILENAME=$(echo $(basename "${files}") | sed 's/\.piRNAs.bed$//')
+	PIRNA="${FILENAME}".piRNAs.bed
+	CLUSTERS="${FILENAME}".piRNAs_coreclusters.bed
+	MIRNACOUNTS=$(bedtools intersect -a $HOME/U4.4KO_rawfiles/20200928.BowtieMapping/"${FILENAME}".bed -b $HOME/U4.4_microRNAs.bed | awk 'END{print NR}')
+
+echo "The total number of miRNAs in $FILENAME is $MIRNACOUNTS"
+bedtools coverage -b "${PIRNA}" -a $HOME/AlbCanu/AnnotationFiles/coreclusters_converted_sorted_final.bed -c | awk -v n=${MIRNACOUNTS} \
+	'BEGIN{OFS="\t"} \
+	{$8 = ($7+1)/n * 1000000} {print$1,$2,$3,$4,$5,$6,$7+1,$8,log($8)/log(2)}' > "${CLUSTERS}"
+echo "${CLUSTERS}"
+done
+#then I want to have rows with clusters and columns only showing the log2(RPMM+1) from each library. I need to#print the column 9 from each file 
+paste -d "\t" *piRNAs_coreclusters.bed | awk -v OFS="\t" '{print$1,$2,$3,$4,$5,$6,$9,$18,$27,$36,$45,$54,$63}' > joined_piRNAs_coreclusters_log2RPMMplus1
+cat joined_piRNAs_coreclusters_log2RPMMplus1 > joined_piRNAs_coreclusters_log2RPMMplus1_20230705.txt
+#if you want to use log2 normalized to WT 
+paste -d "\t" *piRNAs_coreclusters.bed | awk -v OFS="\t" '{print$1,$2,$3,$4,$5,$6,$8/$8,$17/$8,$26/$8,$35/$8,$44/$8,$53/$8,$62/$8}' | awk -v OFS="\t" '{print$1,$2,$3,$4,$5,$6,log($8)/log(2),log($9)/log(2),log($10)/log(2),log($11)/log(2),log($12)/log(2),log($13)/log(2)}' > joined_piRNAs_coreclusters_RPMMplus1_nrmtoWT_log2_20230705.txt
+
+```
+
+output is saved in a directory called outputfrombash where R commands are going to be run. 
+Figure S4C
+```{r}
+log2coreclusters <- read_table("./outputfrombash/joined_piRNAs_coreclusters_RPMMplus1_nrmtoWT_log2_20230705.txt",col_names=c("contig","start","end","name","strand","type","CTRL#1","CTRL#6","PIWI5KO#A","PIWI5KO#O","PIWI6KO#10","PIWI6KO#52" ), col_types = c(col_character(), col_number(), col_number(),col_character(), col_character(),col_character(), col_number(), col_number(),col_number(),col_number(),col_number(),col_number()))
+log2coreclusters <- as.data.frame(log2coreclusters)
+#adding the size 
+size <- c(c(log2coreclusters$end)-c(log2coreclusters$start))
+log2coreclusters <- cbind(log2coreclusters,size)
+#sort according to the size 
+log2coreclusters <- log2coreclusters[order(log2coreclusters$size,decreasing=TRUE),]
+
+
+log2coreclusterstoplot <- data.frame(cbind(c(log2coreclusters$name,log2coreclusters$name,log2coreclusters$name,log2coreclusters$name,log2coreclusters$name,log2coreclusters$name),c(rep("CTRL#1",37),rep("CTRL#6",37),rep("PIWI5KO#A",37),rep("PIWI5KO#O",37),rep("PIWI6KO#10",37),rep("PIWI6KO#52",37)),c(as.numeric(as.character(log2coreclusters$`CTRL#1`)),as.numeric(as.character(log2coreclusters$`CTRL#6`)),as.numeric(as.character(log2coreclusters$`PIWI5KO#A`)),as.numeric(as.character(log2coreclusters$`PIWI5KO#O`)),as.numeric(as.character(log2coreclusters$`PIWI6KO#10`)),as.numeric(as.character(log2coreclusters$`PIWI6KO#52`)))),c(rep(as.numeric(as.character(log2coreclusters$size)),6)))
+#sort according to the size 
+log2coreclusterstoplot <- log2coreclusterstoplot[order(log2coreclusterstoplot$c.rep.as.numeric.as.character.log2coreclusters.size....6..,decreasing=TRUE),]
+
+log2coreclusterstoplot$X1 <- factor(x = log2coreclusterstoplot$X1,levels = as.character(unique(log2coreclusterstoplot$X1)))
+
+coreclusters_plot_piwi6 <-ggplot(log2coreclusterstoplot,aes(log2coreclusterstoplot$X2,log2coreclusterstoplot$X1,fill = c(as.numeric(as.character(log2coreclusterstoplot$X3))))) + geom_tile() + scale_fill_gradient2(low = "#5FADCB", high = "#E2741E", midpoint = 0 , limits = c(-6,6)) +theme(legend.title=element_blank()) +theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank())+scale_x_discrete(limits=c("CTRL#1","CTRL#6","PIWI6KO#10","PIWI6KO#52"))
+
+png(file="coreclusters_plot_piwi6.png",
+   width=484, height=484)
+coreclusters_plot_piwi6
+dev.off()
+
+```
+
+
+
+Analyzing piRNAs mapping to all piRNA clusters defined in albopictus in Piwi6 KO lines.
+The script below takes the genome mapped piRNAs as an input. 
+```{bash}
+#This script was written op 20230102 to be able to count the number of piRNAs that overlap with the all clusters defined by (Qu J, Betting V, van Iterson R ...Chromatin profiling identifies transcriptional readthrough as a conserved mechanism for piRNA biogenesis in mosquitoes,Cell Reports, 2023; 42)
+#with the paste command, it creates a tab delimited file with all the rawcounts+1 normalized to reads per million miRNAs and takes the log2 of those values
+#to  be plotted in scatter plots.
+WORKDIR=`pwd`
+for files in "${WORKDIR}"/*.piRNAs.bed; do
+        FILENAME=$(echo $(basename "${files}") | sed 's/\.piRNAs.bed$//')
+	PIRNA="${FILENAME}".piRNAs.bed
+	CLUSTERS="${FILENAME}".piRNAs_allclusters.bed
+	MIRNACOUNTS=$(bedtools intersect -a $HOME/U4.4KO_rawfiles/20200928.BowtieMapping/"${FILENAME}".bed -b $HOME/U4.4_microRNAs.bed | awk 'END{print NR}')
+
+echo "The total number of miRNAs in $FILENAME is $MIRNACOUNTS"
+bedtools coverage -b "${PIRNA}" -a $HOME/AlbCanu/AnnotationFiles/U4.4_allclusters_converted_sorted_final.bed -c | awk -v n=${MIRNACOUNTS} \
+	'BEGIN{OFS="\t"} \
+	{$8 = ($7+1)/n * 1000000} {print$1,$2,$3,$4,$5,$6,$7+1,$8,log($8)/log(2)}' > "${CLUSTERS}"
+echo "${CLUSTERS}"
+done
+#then I want to have rows with clusters and columns only showing the log2(RPMM+1) from each library. I need to#print the column 9 from each file 
+paste -d "\t" *piRNAs_allclusters.bed | awk -v OFS="\t" '{print$1,$2,$3,$4,$5,$6,$9,$18,$27,$36,$45,$54,$63}' > joined_piRNAs_allclusters_log2RPMMplus1
+cat joined_piRNAs_allclusters_log2RPMMplus1 > joined_piRNAs_allclusters_log2RPMMplus1_20230705.txt
+#if you want to use log2 normalized to WT 
+paste -d "\t" *piRNAs_allclusters.bed | awk -v OFS="\t" '{print$1,$2,$3,$4,$5,$6,$8/$8,$17/$8,$26/$8,$35/$8,$44/$8,$53/$8,$62/$8}' | awk -v OFS="\t" '{print$1,$2,$3,$4,$5,$6,log($8)/log(2),log($9)/log(2),log($10)/log(2),log($11)/log(2),log($12)/log(2),log($13)/log(2)}' > joined_piRNAs_allclusters_RPMMplus1_nrmtoWT_log2_20230705.txt
+
+```
+
+
+output is saved in a directory called outputfrombash where R commands are going to be run. 
+Figure S4D
+```{r}
+log2allclusters <- read_table("./outputfrombash/joined_piRNAs_allclusters_RPMMplus1_nrmtoWT_log2_20230705.txt",col_names=c("contig","start","end","name","size","strand","CTRL#1","CTRL#6","PIWI5KO#A","PIWI5KO#O","PIWI6KO#10","PIWI6KO#52" ), col_types = c(col_character(), col_number(), col_number(),col_character(), col_number(),col_character(), col_number(), col_number(),col_number(),col_number(),col_number(),col_number()))
+log2allclusters <- as.data.frame(log2allclusters)
+#sort according to the size 
+log2allclusters <- log2allclusters[order(log2allclusters$size,decreasing=TRUE),]
+
+#X1: clustername, X2:size, X3:library, X4:values
+log2allclusterstoplot <- data.frame(cbind(c(log2allclusters$name,log2allclusters$name,log2allclusters$name,log2allclusters$name,log2allclusters$name,log2allclusters$name),c(log2allclusters$size,log2allclusters$size,log2allclusters$size,log2allclusters$size,log2allclusters$size,log2allclusters$size),c(rep("CTRL#1",285),rep("CTRL#6",285),rep("PIWI5KO#A",285),rep("PIWI5KO#O",285),rep("PIWI6KO#10",285),rep("PIWI6KO#52",285)),c(as.numeric(as.character(log2allclusters$`CTRL#1`)),as.numeric(as.character(log2allclusters$`CTRL#6`)),as.numeric(as.character(log2allclusters$`PIWI5KO#A`)),as.numeric(as.character(log2allclusters$`PIWI5KO#O`)),as.numeric(as.character(log2allclusters$`PIWI6KO#10`)),as.numeric(as.character(log2allclusters$`PIWI6KO#52`)))))
+
+log2allclusterstoplot$X1 <- factor(x = log2allclusterstoplot$X1,levels = as.character(unique(log2allclusterstoplot$X1)))
+
+allclusters_plot_piwi6 <- ggplot(log2allclusterstoplot,aes(log2allclusterstoplot$X3,log2allclusterstoplot$X1,fill=c(as.numeric(as.character(log2allclusterstoplot$X4))))) + geom_tile() + scale_fill_gradient2(low = "#5FADCB", high = "#E2741E", midpoint = 0 , limits = c(-10,10)) +theme(legend.title=element_blank())+theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank())+scale_x_discrete(limits=c("CTRL#1","CTRL#6","PIWI6KO#10","PIWI6KO#52"))
+
+png(file="allclusters_plot_piwi6.png",
+   width=484, height=484)
+allclusters_plot_piwi6
+dev.off()
+```

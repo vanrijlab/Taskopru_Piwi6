@@ -1,0 +1,61 @@
+---
+title: "miRNAcounts"
+output: html_document
+date: '2023-07-23'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(patchwork)
+library(tidyverse)
+library(wesanderson)
+library("RColorBrewer")
+library(ggrepel)
+```
+
+These bash and R commands are aiming to get the miRNA counts in libraries to see the correlation between the two Piwi6KO lines. 
+To normalize, to the number of library reads passing the filters (filter for minimum length of 15, max length 35) after adapter trimming were used. 
+```{bash}
+ezgit@octarine:~/WD_202010/miRNAcounts_202307$ cat countingmiRNAs.sh
+#For this script, ONLY genome mapped .bed files of Piwi6KO#10 (RDVJ189.bed) and Piwi6KO#52 (RDVJ190.bed) should be in the directory.
+#count the numver of miRNAs and normalize to reads mapping filter and use it for the correlation
+WORKDIR=`pwd`
+for files in "${WORKDIR}"/*.bed; do
+        FILENAME=$(echo $(basename "${files}") | sed 's/\.bed$//')
+        BED="${FILENAME}".bed
+        MIRNAS="${FILENAME}".miRNAs
+
+bedtools coverage -b "${BED}" -a $HOME/U4.4_microRNAs.bed -c | awk 'BEGIN{OFS="\t"} \
+{print$1,$2,$3,$4,$5,$6,$7+1}'  > "${MIRNAS}"
+done
+
+#nrm to reads passing filters
+#filtered reads: 17523988 for Piwi6KO#10 and 14919801 for Piwi6KO#52. 
+paste -d "\t" *.miRNAs | awk  -v OFS="\t" '{print$1,$2,$3,$4,$5,$6,$7/17523988*1000000,$14/14919801*1000000}' > nrmtoreadspassing_filters.txt
+
+cat nrmtoreadspassing_filters.txt | awk  -v OFS="\t" '{print$1,$2,$3,$4,$5,$6,log($7)/log(2),log($8)/log(2)}' > nrmtoreadspassing_filterslog2.txt
+
+```
+
+
+Figure s3A
+Save nrmtoreadspassing_filterslog2.txt to outputfrombash in the directory where you want to run the R commands. 
+```{r}
+miRNAcounts <- read_table("./outputfrombash/nrmtoreadspassing_filterslog2.txt",col_names=c("chromosome","start","end","miRNA",".","strand","PIWI6KO#10","PIWI6KO#52"), col_types = c(col_character(),col_number(),col_number(),col_character(),col_character(),col_character(),col_number(), col_number()))
+miRNAcounts <- as.data.frame(miRNAcounts)
+
+
+plotmiRNAs <- ggplot(miRNAcounts, aes(x=miRNAcounts$`PIWI6KO#10`, y=miRNAcounts$`PIWI6KO#52`)) + geom_point(size=6, alpha = .6,color="#0A8974") +     theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank())  + geom_abline(slope=1,linetype="dashed", color="black")+ xlim(-5,15)+ylim(-5,15)
+
+
+png(file="plotmiRNAs.png",
+    width=382, height=484)
+plotmiRNAs
+dev.off()
+
+```
+
