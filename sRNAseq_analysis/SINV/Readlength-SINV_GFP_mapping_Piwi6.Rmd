@@ -1,0 +1,82 @@
+---
+title: "mapping-SINV_GFP"
+output:
+  html_document: default
+  pdf_document: default
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(patchwork)
+library(tidyverse)
+library(wesanderson)
+library("RColorBrewer")
+```
+
+To plot read length distribution for SINV-mapping reads in WT and Piwi6KO libraries
+I had SINV infected samples mapped to SINV-GFP genome (by using "mapping_clippedreads_to_SINV-GFP.sh") got the miRNA counts from mapping the same samples to Aedes albopictus genome.
+I saved the 19-33nt reads (by using "siRNApiRNA_25_30.sh" and "readlength_plus_minus_mapping_to_SINV-GFP.sh" and the number of miRNAs, normalized the reads to million miRNAs and saved in SINV-GFP_nrm_miRNA.csv. 
+Figure S2D
+```{r}
+df <- read_csv2("SINV-GFP_nrm_miRNA.csv" ,col_names = FALSE)
+P6_10_plot_plus <- ggplot(data = df, aes(x=X1, y=X12)) + geom_bar(stat = "identity", fill="#0A8974",color="black") +  labs(y= "", x= "") + ggtitle("PIWI6KO#10-GFP") + theme(axis.text=element_text(size=20),axis.title=element_text(size=20)) + theme(plot.title = element_text(size=20))+ scale_x_continuous(label=as.character(df$X1),breaks=df$X1)+theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank(),strip.text.y=element_text(angle = 360))+scale_y_continuous(breaks=c(0,20000,40000,60000,80000,100000))+ylim(0,60000)
+
+
+P6_10_plot_plus <- P6_10_plot_plus + theme(
+      axis.text.x = element_blank(),
+      axis.title.x = element_blank(),
+       axis.ticks.x = element_blank()
+      )
+
+P6_10_plot_minus <- ggplot(data = df, aes(x=X1, y=X13)) + geom_bar(stat = "identity", fill = "gray",color="black") +  labs(x= "read length",y="Reads per mi miRNAs") + theme(axis.text=element_text(size=20),axis.title=element_text(size=20)) + theme(plot.title = element_text(size=20)) + scale_y_reverse(breaks=c(80000,60000,40000,20000,0))+ scale_x_continuous(label=as.character(df$X1),breaks=df$X1)+theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank(),strip.text.y=element_text(angle = 360))+ ylim(60000,0)
+P6_10_readlength_SINV <- P6_10_plot_plus/P6_10_plot_minus
+
+#P6_52
+P6_52_plot_plus <- ggplot(data = df, aes(x=X1, y=X14)) + geom_bar(stat = "identity", fill="#0A8974",color="black") +  labs(y= "", x= "") + ggtitle("PIWI6KO#52-GFP") + theme(axis.text=element_text(size=20),axis.title=element_text(size=20)) + theme(plot.title = element_text(size=20))+ scale_x_continuous(label=as.character(df$X1),breaks=df$X1)+theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank(),strip.text.y=element_text(angle = 360))+scale_y_continuous(breaks=c(0,20000,40000,60000,80000,100000))+ylim(0,60000)
+
+
+P6_52_plot_plus <- P6_52_plot_plus + theme(
+      axis.text.x = element_blank(),
+      axis.title.x = element_blank(),
+       axis.ticks.x = element_blank()
+      )
+
+P6_52_plot_minus <- ggplot(data = df, aes(x=X1, y=X15)) + geom_bar(stat = "identity", fill = "gray",color="black") +  labs(x= "read length",y="Reads per mi miRNAs") + theme(axis.text=element_text(size=20),axis.title=element_text(size=20)) + theme(plot.title = element_text(size=20)) + scale_y_reverse(breaks=c(80000,60000,40000,20000,0))+ scale_x_continuous(label=as.character(df$X1),breaks=df$X1)+theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank(),strip.text.y=element_text(angle = 360))+ ylim(60000,0)
+
+
+P6_52_readlength_SINV <- P6_52_plot_plus/P6_52_plot_minus
+
+png(file="Piwi6ko_10_readlength_SINV.png",
+   width=689, height=484)
+P6_10_readlength_SINV
+dev.off()
+
+png(file="Piwi6ko_52_readlength_SINV.png",
+   width=689, height=484)
+P6_52_readlength_SINV
+dev.off()
+
+#wt with a different color 
+WT_plot_plus_2 <- ggplot(data = df, aes(x=X1, y=X2)) + geom_bar(stat = "identity", fill="#0A8974",color="black") +  labs(y= "", x= "") + ggtitle("WT-GFP") + theme(axis.text=element_text(size=20),axis.title=element_text(size=20)) + theme(plot.title = element_text(size=20))+ scale_x_continuous(label=as.character(df$X1),breaks=df$X1)+theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank(),strip.text.y=element_text(angle = 360))+scale_y_continuous(breaks=c(0,20000,40000,60000,80000))+ylim(0,60000)
+
+WT_plot_plus_2 <- WT_plot_plus_2 + theme(
+      axis.text.x = element_blank(),
+      axis.title.x = element_blank(),
+       axis.ticks.x = element_blank()
+      )
+
+WT_plot_minus_2 <- ggplot(data = df, aes(x=X1, y=X3)) + geom_bar(stat = "identity", fill = "gray",color="black") +  labs(x= "read length",y="Reads per mi miRNAs") + theme(axis.text=element_text(size=20),axis.title=element_text(size=20)) + theme(plot.title = element_text(size=20)) + scale_y_reverse(breaks=c(80000,60000,40000,20000,0))+ scale_x_continuous(label=as.character(df$X1),breaks=df$X1)+theme(axis.line=element_line(),panel.grid.major=element_line(color="gray97"),panel.background=element_blank(),strip.text.y=element_text(angle = 360))+ ylim(60000,0)
+
+WT_readlength_SINV_2 <- WT_plot_plus_2/WT_plot_minus_2
+png(file="WT_readlength_SINV_2.png",
+   width=689, height=484)
+WT_readlength_SINV_2
+dev.off()
+
+```

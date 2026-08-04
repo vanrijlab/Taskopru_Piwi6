@@ -1,0 +1,38 @@
+#!/bin/bash -l
+WORKDIR=`pwd`
+for files in "${WORKDIR}"/*size.bed; do
+        FILENAME=$(echo $(basename "${files}") | sed 's/\.size.bed$//')
+        SIZE="${FILENAME}".size.bed
+echo "readlength of antisense mapping sRNAs  of "${FILENAME}""
+cat "${SIZE}" | awk '$7 == 19 && $6 == "-"'| wc -l
+cat "${SIZE}" | awk '$7 == 20 && $6 == "-" '| wc -l
+cat "${SIZE}" | awk '$7 == 21 && $6 == "-" '| wc -l
+cat "${SIZE}" | awk '$7 == 22 && $6 == "-" '| wc -l
+cat "${SIZE}" | awk '$7 == 23 && $6 == "-" '| wc -l
+cat "${SIZE}" | awk '$7 == 24 && $6 == "-" '| wc -l
+cat "${SIZE}" | awk '$7 == 25 && $6 == "-" '| wc -l
+cat "${SIZE}" | awk '$7 == 26 && $6 == "-" '| wc -l
+cat "${SIZE}" | awk '$7 == 27 && $6 == "-" '| wc -l
+cat "${SIZE}" | awk '$7 == 28 && $6 == "-" '| wc -l
+cat "${SIZE}" | awk '$7 == 29 && $6 == "-" '| wc -l
+cat "${SIZE}" | awk '$7 == 30 && $6 == "-" '| wc -l
+cat "${SIZE}" | awk '$7 == 31 && $6 == "-" '| wc -l
+cat "${SIZE}" | awk '$7 == 32 && $6 == "-" '| wc -l
+cat "${SIZE}" | awk '$7 == 33 && $6 == "-" '| wc -l
+echo "readlength of sense mapping sRNAs  of "${FILENAME}""
+cat "${SIZE}" | awk '$7 == 19 && $6 == "+" '| wc -l
+cat "${SIZE}" | awk '$7 == 20 && $6 == "+" '| wc -l
+cat "${SIZE}" | awk '$7 == 21 && $6 == "+" '| wc -l
+cat "${SIZE}" | awk '$7 == 22 && $6 == "+" '| wc -l
+cat "${SIZE}" | awk '$7 == 23 && $6 == "+" '| wc -l
+cat "${SIZE}" | awk '$7 == 24 && $6 == "+" '| wc -l
+cat "${SIZE}" | awk '$7 == 25 && $6 == "+" '| wc -l
+cat "${SIZE}" | awk '$7 == 26 && $6 == "+" '| wc -l
+cat "${SIZE}" | awk '$7 == 27 && $6 == "+" '| wc -l
+cat "${SIZE}" | awk '$7 == 28 && $6 == "+" '| wc -l
+cat "${SIZE}" | awk '$7 == 29 && $6 == "+" '| wc -l
+cat "${SIZE}" | awk '$7 == 30 && $6 == "+" '| wc -l
+cat "${SIZE}" | awk '$7 == 31 && $6 == "+" '| wc -l
+cat "${SIZE}" | awk '$7 == 32 && $6 == "+" '| wc -l
+cat "${SIZE}" | awk '$7 == 33 && $6 == "+" '| wc -l
+done

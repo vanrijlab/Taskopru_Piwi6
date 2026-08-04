@@ -1,0 +1,26 @@
+# The aim of this script is to generate fasta files of the piRNAs mapping to SINV-GFP in sense and antisense orientation, to be able to use it as an input to generate sequence logos.
+# It uses piRNAs.bed as an input. 
+WORKDIR=`pwd`
+for files in "${WORKDIR}"/*_SINV-GFP.piRNAs.bed; do
+        FILENAME=$(echo $(basename "${files}") | sed 's/\_SINV-GFP.piRNAs.bed$//')
+        PIRNA="${FILENAME}"_SINV-GFP.piRNAs.bed
+
+#separate the sense and antisense reads 
+cat "${PIRNA}" | awk '$6=="+" {print$0}' > "${FILENAME}"_sense
+cat "${PIRNA}" | awk '$6=="-" {print$0}' > "${FILENAME}"_antisense
+
+bedtools getfasta -fi $HOME/SINV-GFP/AnnotationFiles/SINV-GFP.fa -bed "${FILENAME}"_sense > "${FILENAME}"_sense_fa
+#convert all lowercases to uppercase, otherwise fastx trimmer does not work well and ignores the lines below the line containing lower case
+cat "${FILENAME}"_sense_fa | awk '{print toupper($0)}' > "${FILENAME}"_sense_2_fa
+fastx_trimmer -f 1 -l 25 -i "${FILENAME}"_sense_2_fa -o "${FILENAME}"_sense_fa_trimmed
+fasta_nucleotide_changer -i "${FILENAME}"_sense_fa_trimmed -o "${FILENAME}"_sense_RNA.fa -r
+echo "done with sense" "${FILENAME}" 
+bedtools getfasta -fi $HOME/SINV-GFP/AnnotationFiles/SINV-GFP.fa -bed "${FILENAME}"_antisense > "${FILENAME}"_antisense_fa
+#convert all lowercases to uppercase, otherwise fastx trimmer does not work well and ignores the lines below the line containing lower case
+cat "${FILENAME}"_antisense_fa | awk '{print toupper($0)}' > "${FILENAME}"_antisense_2_fa
+fastx_reverse_complement -i "${FILENAME}"_antisense_2_fa -o "${FILENAME}"_antisense_reverse_fa 
+fastx_trimmer -f 1 -l 25 -i "${FILENAME}"_antisense_reverse_fa -o "${FILENAME}"_antisense_fa_trimmed
+fasta_nucleotide_changer -i "${FILENAME}"_antisense_fa_trimmed -o "${FILENAME}"_antisense_RNA.fa -r
+echo "done with antisense" "${FILENAME}"
+done
+#wc -l *.fa | awk '{print $1/2,$2}' > numberofpiRNAs.txt
