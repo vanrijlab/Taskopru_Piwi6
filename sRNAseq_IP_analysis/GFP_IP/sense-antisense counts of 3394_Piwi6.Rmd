@@ -1,0 +1,56 @@
+---
+title: "sense/antisense counts of 3394/AalERV1"
+output: html_document
+date: "2026-05-25"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/phd/Piwi6_revision/small RNA data GFP-IP/GFP-Piwi6 counts")
+```
+
+```{r}
+library(ggplot2)
+library(patchwork)
+library(tidyverse)
+library(wesanderson)
+library("RColorBrewer")
+```
+
+Samples were mapped to TE annotation from Lau lab. piRNAs mapping in sense and antisense orientation were saved in "GFP-IP-3394.csv"
+Figure S5B
+```{r}
+GFP_IP_3394 <- read_delim(
+    "GFP-IP-3394.csv",
+    delim = ";",
+    col_names = c("sample","orientation", "3394_counts"),
+    col_types = cols(
+        col_character(),
+        col_character(),
+        col_number()
+    ),
+    locale = locale(decimal_mark = ","))
+
+GFP_IP_3394_plot <- ggplot(
+  GFP_IP_3394,
+  aes(
+    fill = factor(orientation, levels = c("antisense", "sense")),
+    y = `3394_counts`,
+    x = sample
+  )
+) +
+  geom_bar(position = "stack", stat = "identity", color = "black") +
+  scale_x_discrete(limits = c("GFP", "GFP-Piwi6", "GFP-Piwi6-YK")) +
+  scale_fill_manual(values = c("#0A8974", "gray")) +
+  theme(
+    axis.line = element_line(),
+    panel.grid.major = element_line(color = "gray97"),
+    panel.background = element_blank()
+  )
+GFP_IP_3394_plot
+png(file="GFP_IP_3394_plot.png",
+    width=484, height=484)
+GFP_IP_3394_plot
+dev.off()
+
+```
