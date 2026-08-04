@@ -1,0 +1,643 @@
+---
+title: "DESeq2 analysis and visualisation"
+author: "Nynke van Eijk"
+contact: "nynke.vaneijk@radboudumc.nl"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Load Packages
+```{r, results='hide'}
+library(tidyverse)
+library(here)
+library(patchwork)
+library(DESeq2)
+library(ggrepel)
+library(rstatix)
+library(ggpubr)
+library(nortest)
+library(conflicted)
+library(openxlsx)
+conflicts_prefer(rstatix::filter)
+```
+
+# Antibody 1 (RNA pol II)
+## Set-up
+```{r, results='hide'}
+# Sample list
+samples_pol2 <- list(
+  "CnT_pol2_wt-1"      = c("condition" = "WT",   "rep" = "1"),
+  "CnT_pol2_wt-2"      = c("condition" = "WT",   "rep" = "2"),
+  "CnT_pol2_ko10-1"    = c("condition" = "ko10", "rep" = "1"),
+  "CnT_pol2_ko10-2"    = c("condition" = "ko10", "rep" = "2"),
+  "CnT_pol2_ko52-1"    = c("condition" = "ko52", "rep" = "1"),
+  "CnT_pol2_ko52-2"    = c("condition" = "ko52", "rep" = "2"))
+
+# Column data
+## condition  = WT, ko10, ko52 (three groups)
+## condition2 = WT, KO         (ko10 and ko52 pooled)
+coldata_pol2 <- map_dfr(names(samples_pol2), function(sp) {
+  data.frame(sample    = sp,
+             condition = samples_pol2[[sp]][["condition"]],
+             rep       = samples_pol2[[sp]][["rep"]])}) %>%
+  mutate(condition  = factor(condition, levels = c("WT", "ko10", "ko52")),
+         condition2 = factor(ifelse(condition == "WT", "WT", "KO"), levels = c("WT", "KO"))) %>%
+  column_to_rownames("sample")
+
+# Count matrix
+## Reads the ${sample}_counts.tsv files produced by 4_counting.sh
+count_matrix_pol2 <- map_dfc(names(samples_pol2), function(sp) {
+  read_tsv(paste0(sp, "_counts.tsv"),
+           col_names = c("transposon", "counts")) %>%
+    { if (sp == names(samples_pol2)[1]) . else select(., counts) } %>%
+    rename_with(~ sp, "counts")}) %>%
+  column_to_rownames("transposon") %>%
+  as.matrix() %>%
+  round() %>%
+  .[rowSums(.) > 0, ]
+```
+
+## DESeq2 analysis
+```{r, results='hide'}
+# Create a DESeq2 DataSet to see the difference between WT, ko10 and ko52
+dds_pol2 <- DESeqDataSetFromMatrix(countData = count_matrix_pol2,
+                                   colData   = coldata_pol2,
+                                   design    = ~condition)
+# Create a DESeq2 DataSet to see the difference between WT and KO (ko10 and ko52 together)
+dds2_pol2 <- DESeqDataSetFromMatrix(countData = count_matrix_pol2,
+                                    colData   = coldata_pol2,
+                                    design    = ~condition2)
+
+# DESeq2
+## DESeq_pol2  is used for the normalised counts in the violin plots
+dds_pol2$condition <- relevel(dds_pol2$condition, ref = "WT")
+DESeq_pol2 <- DESeq(dds_pol2, quiet = TRUE)
+## DESeq2_pol2 is used for the KO vs WT statistics in the volcano plots
+dds2_pol2$condition2 <- relevel(dds2_pol2$condition2, ref = "WT")
+DESeq2_pol2 <- DESeq(dds2_pol2, quiet = TRUE)
+```
+
+# Antibody 2 (H3K9me3)
+## Set-up
+```{r, results='hide'}
+# Sample list
+samples_H3K9me3 <- list(
+  "CnT_H3K9me3_wt-1"   = c("condition" = "WT",   "rep" = "1"),
+  "CnT_H3K9me3_wt-2"   = c("condition" = "WT",   "rep" = "2"),
+  "CnT_H3K9me3_ko10-1" = c("condition" = "ko10", "rep" = "1"),
+  "CnT_H3K9me3_ko10-2" = c("condition" = "ko10", "rep" = "2"),
+  "CnT_H3K9me3_ko52-1" = c("condition" = "ko52", "rep" = "1"),
+  "CnT_H3K9me3_ko52-2" = c("condition" = "ko52", "rep" = "2"))
+
+# Column data
+## condition  = WT, ko10, ko52 (three groups)
+## condition2 = WT, KO         (ko10 and ko52 pooled)
+coldata_H3K9me3 <- map_dfr(names(samples_H3K9me3), function(sh) {
+  data.frame(sample    = sh,
+             condition = samples_H3K9me3[[sh]][["condition"]],
+             rep       = samples_H3K9me3[[sh]][["rep"]])}) %>%
+  mutate(condition  = factor(condition, levels = c("WT", "ko10", "ko52")),
+         condition2 = factor(ifelse(condition == "WT", "WT", "KO"), levels = c("WT", "KO"))) %>%
+  column_to_rownames("sample")
+
+# Count matrix
+## Reads the ${sample}_counts.tsv files produced by 4_counting.sh
+count_matrix_H3K9me3 <- map_dfc(names(samples_H3K9me3), function(sh) {
+  read_tsv(paste0(sh, "_counts.tsv"),
+           col_names = c("transposon", "counts")) %>%
+    { if (sh == names(samples_H3K9me3)[1]) . else select(., counts) } %>%
+    rename_with(~ sh, "counts")}) %>%
+  column_to_rownames("transposon") %>%
+  as.matrix() %>%
+  round() %>%
+  .[rowSums(.) > 0, ]
+```
+
+## DESeq2 analysis
+```{r, results='hide'}
+# Create a DESeq2 DataSet to see the difference between WT, ko10 and ko52
+dds_H3K9me3 <- DESeqDataSetFromMatrix(countData = count_matrix_H3K9me3,
+                                      colData   = coldata_H3K9me3,
+                                      design    = ~condition)
+# Create a DESeq2 DataSet to see the difference between WT and KO (ko10 and ko52 together)
+dds2_H3K9me3 <- DESeqDataSetFromMatrix(countData = count_matrix_H3K9me3,
+                                       colData   = coldata_H3K9me3,
+                                       design    = ~condition2)
+
+# DESeq2
+## DESeq_H3K9me3  is used for the normalised counts in the violin plots
+dds_H3K9me3$condition <- relevel(dds_H3K9me3$condition, ref = "WT")
+DESeq_H3K9me3 <- DESeq(dds_H3K9me3, quiet = TRUE)
+## DESeq2_H3K9me3 is used for the KO vs WT statistics in the volcano plots
+dds2_H3K9me3$condition2 <- relevel(dds2_H3K9me3$condition2, ref = "WT")
+DESeq2_H3K9me3 <- DESeq(dds2_H3K9me3, quiet = TRUE)
+```
+
+# Violin plots
+## Set-up
+```{r, results='hide'}
+# Standard colors, for the outline of the violins
+base_colors <- c("WT" = "grey", "ko10" = "#0A8974", "ko52" = "#5FAECC")
+
+# Lighter variant colors, used to fill the violins
+light_colors <- sapply(base_colors, function(hex) {
+  rgb_vals <- col2rgb(hex) / 255
+  light <- rgb_vals + (1 - rgb_vals) * 0.6
+  rgb(light[1], light[2], light[3])
+})
+
+# Shared theme for the violin and dot panels
+panel_theme <- list(theme_bw(),
+                    theme(legend.title = element_blank(), 
+                          legend.key = element_blank(), 
+                          legend.position = "none", 
+                          panel.background= element_rect(fill = "white", color = NA), 
+                          axis.line=element_line()))
+
+# Shared y-axis for the violin and dot panels
+count_scale <- list(scale_y_continuous(trans="log2", limits = c(1,1000000)), 
+                    ylab("Mean counts + 0.5 (log2)"))
+
+# Shared aesthetic for the violin and dot panels
+panel_aes <- aes(x = condition, y = counts, fill = condition, color = condition)
+
+# Shared layers for the violin panels
+violin_layers <- c(list(geom_violin(linewidth=0.8, alpha = 0.5), 
+                        scale_fill_manual(values = light_colors), 
+                        scale_color_manual(values = base_colors)), 
+                        count_scale, panel_theme)
+
+# Extra layers for the paired violin panels (p3 & p4)
+paired_layers <- list(geom_line(aes(group = transposon), color = "grey40", linewidth = 0.4, alpha = 0.3),
+                      geom_point(size = 1.5, position = position_dodge(0), color = "black"),
+                      scale_size_identity())
+
+# Significance brackets for the violin panels
+pvalues <- function(pwc) stat_pvalue_manual(pwc, label = "p.adj.signif", tip.length = 0.01, step.increase = 0.08)
+
+# Long format of the condition means, optionally restricted to a set of transposons
+mean_counts_long <- function(norm_counts, transposon_filter = NULL) {
+  norm_counts %>%
+    { if (!is.null(transposon_filter)) filter(., transposon %in% transposon_filter) else . } %>%
+    select(transposon, meanWT, meanko10, meanko52) %>%
+    pivot_longer(-transposon, names_to = "condition", values_to = "counts") %>%
+    mutate(condition = factor(condition, 
+                              levels = c("meanWT", "meanko10", "meanko52"), 
+                              labels = c("WT", "ko10", "ko52")))}
+
+# Long format of the individual replicates for one transposon
+replicate_counts_long <- function(norm_counts, transposon_id) {
+  norm_counts %>%
+    filter(grepl(transposon_id, transposon)) %>%
+    select(transposon, matches("-[12]$")) %>%
+    pivot_longer(-transposon, names_to = "sample", values_to = "counts") %>%
+    mutate(condition = factor(case_when(grepl("wt", sample) ~ "WT",
+                                        grepl("ko10", sample) ~"ko10",
+                                        grepl("ko52", sample) ~"ko52"),
+                                        levels = c("WT", "ko10", "ko52")))}
+```
+
+## Extracting normalised counts
+```{r, results='hide'}
+# RNA pol II
+norm_counts_pol2 <- counts(DESeq_pol2, normalized = TRUE, replaced = FALSE) %>%
+  as.data.frame() %>%
+  rownames_to_column("transposon") %>%
+  mutate(meanWT   = (`CnT_pol2_wt-1` + `CnT_pol2_wt-2`) / 2 + 0.5,
+         meanko10 = (`CnT_pol2_ko10-1` + `CnT_pol2_ko10-2`) / 2 + 0.5,
+         meanko52 = (`CnT_pol2_ko52-1` + `CnT_pol2_ko52-2`) / 2 + 0.5)
+
+# H3K9me3
+norm_counts_H3K9me3 <- counts(DESeq_H3K9me3, normalized = TRUE, replaced = FALSE) %>%
+  as.data.frame() %>%
+  rownames_to_column("transposon") %>%
+  mutate(meanWT   = (`CnT_H3K9me3_wt-1` + `CnT_H3K9me3_wt-2`) / 2 + 0.5,
+         meanko10 = (`CnT_H3K9me3_ko10-1` + `CnT_H3K9me3_ko10-2`) / 2 + 0.5,
+         meanko52 = (`CnT_H3K9me3_ko52-1` + `CnT_H3K9me3_ko52-2`) / 2 + 0.5)
+```
+
+## Statistics
+```{r, results='hide'}
+# Normality test
+## Reports the outliers per condition and tests each condition for normality
+run_norm_test <- function(norm_counts, transposon_filter = NULL) {
+  df <- mean_counts_long(norm_counts, transposon_filter) %>%
+    mutate(counts = log2(counts))
+  ## Check for outliers
+  outlier_summary <- df %>%
+    group_by(condition) %>%
+    identify_outliers(counts) %>%
+    group_by(condition) %>%
+    summarise(n_outliers = n(), contains_AalERV1 = "Consensus_28_AeERV1loci" %in% transposon)
+  message("Outliers:"); print(data.frame(outlier_summary))
+  ## Test for normality
+  normality <- df %>%
+    group_by(condition) %>%
+    summarise(n = n(),
+              test_used = if (n() > 5000) "Anderson-Darling" else "Shapiro-Wilk",
+              p_value   = if (n() > 5000) nortest::ad.test(counts)$p.value
+                          else shapiro.test(counts)$p.value)
+  message("Normality:"); print(data.frame(normality))}
+
+# Repeated measures ANOVA
+## Reports the ANOVA table and returns the pairwise paired t-tests
+run_paired_stats <- function(norm_counts, transposon_filter = NULL) {
+  df <- mean_counts_long(norm_counts, transposon_filter) %>%
+    mutate(counts = log2(counts))
+  ## ANOVA
+  message("ANOVA:")
+  print(get_anova_table(anova_test(data = df, dv = counts, wid = transposon, within = condition, type = 3)))
+  ## Post-hoc: paired t-tests with Bonferroni correction
+  pwc <- df %>%
+    pairwise_t_test(counts ~ condition, paired = TRUE, p.adjust.method = "bonferroni") %>%
+    add_xy_position(x = "condition")
+  return(pwc)}
+
+# Friedman test
+## Reports the Friedman test and effect size, and returns the pairwise Wilcoxon tests
+run_nonparam_stats <- function(norm_counts, transposon_filter = NULL) {
+  df <- mean_counts_long(norm_counts, transposon_filter) %>%
+    mutate(counts = log2(counts))
+  ## Friedman test (non-parametric equivalent of the repeated measures ANOVA)
+  message("Friedman test:")
+  print(friedman_test(df, counts ~ condition | transposon))
+  ## Effect size
+  message("Effect size (Kendall's W):")
+  print(friedman_effsize(df, counts ~ condition | transposon))
+  ## Post-hoc: Wilcoxon signed-rank with Bonferroni correction
+  pwc <- df %>%
+    wilcox_test(counts ~ condition, paired = TRUE, p.adjust.method = "bonferroni") %>%
+    add_xy_position(x = "condition")
+  return(pwc)}
+
+# Note:
+## run_norm_test() was run once for every subset below; the results are not part of thisdocument. 
+## Based on those results the choice for an ANOVA or a Friedman test was made.
+```
+
+## AalERV1
+```{r, results='hide'}
+# AalERV1 consensus
+
+# RNA pol II
+## Dot plot
+p1 <- replicate_counts_long(norm_counts_pol2, "Consensus_28_AeERV1loci") %>%
+  ggplot(panel_aes) +
+  geom_point(size=4.5) +
+  scale_color_manual(values = base_colors) +
+  count_scale +
+#  ggtitle("RNA pol II")+
+  xlab("AalERV1 consensus") +
+  panel_theme
+
+# H3K9me3
+## Dot plot
+p2 <- replicate_counts_long(norm_counts_H3K9me3, "Consensus_28_AeERV1loci") %>%
+  ggplot(panel_aes) +
+  geom_point(size=4.5) +
+  scale_color_manual(values = base_colors) +
+  count_scale +
+#  ggtitle("H3K9me3")+
+  xlab("AalERV1 consensus") +
+  panel_theme
+```
+
+## Up-regulated more than 16-fold in RNA-seq
+```{r, results='hide'}
+# Up-regulated more than 16-fold in RNA-seq
+## No family-3394, ERV1 consensus added
+significant_up_more <- read_tsv(here("significantupregulatedmorethan16_RNAseq.tsv"),
+                                col_names = c("transposon", "start", "end"))
+
+# RNA pol II
+## Statistics: repeated measures ANOVA
+pwc_p3 <- run_paired_stats(norm_counts_pol2,    significant_up_more$transposon)
+## Violin plot
+p3 <- mean_counts_long(norm_counts_pol2, significant_up_more$transposon) %>%
+  ggplot(panel_aes) +
+  violin_layers +
+  paired_layers +
+#  ggtitle("RNA pol II")+
+  xlab("Up-regulated > 16-fold") +
+  pvalues(pwc_p3)
+
+# H3K9me3
+## Statistics: repeated measures ANOVA
+pwc_p4 <- run_paired_stats(norm_counts_H3K9me3, significant_up_more$transposon)
+## Violin plot
+p4 <- mean_counts_long(norm_counts_H3K9me3, significant_up_more$transposon) %>%
+  ggplot(panel_aes) +
+  violin_layers +
+  paired_layers +
+#  ggtitle("H3K9me3")+
+  xlab("Up-regulated > 16-fold") +
+  pvalues(pwc_p4)
+```
+
+## All repeat annotations
+```{r, results='hide'}
+# All repeat annotations
+
+# RNA pol II
+## Statistics: Friedman test
+pwc_p5 <- run_nonparam_stats(norm_counts_pol2)
+## Violin plot
+p5 <- mean_counts_long(norm_counts_pol2) %>%
+  ggplot(panel_aes) +
+  violin_layers +
+#  ggtitle("RNA pol II")+
+  xlab("All repeats") +
+  pvalues(pwc_p5)
+
+# H3K9me3
+## Statistics: Friedman test
+pwc_p6 <- run_nonparam_stats(norm_counts_H3K9me3)
+## Violin plot
+p6 <- mean_counts_long(norm_counts_H3K9me3) %>%
+  ggplot(panel_aes) +
+  violin_layers +
+#  ggtitle("H3K9me3")+
+  xlab("All repeats") +
+  pvalues(pwc_p6)
+```
+
+## Not significantly up-regulated in RNA-seq
+```{r, results='hide'}
+# Not significantly up-regulated in RNA-seq
+non_significant <- read_tsv(here("nonsignificant_RNAseq.tsv"),
+                            col_names = c("transposon", "start", "end"))
+
+# RNA pol II
+## Statistics: Friedman test
+pwc_p7 <- run_nonparam_stats(norm_counts_pol2,    non_significant$transposon)
+## Violin plot
+p7 <- mean_counts_long(norm_counts_pol2, non_significant$transposon) %>%
+  ggplot(panel_aes) +
+  violin_layers +
+#  ggtitle("RNA pol II")+
+  xlab("Not-significant") +
+  pvalues(pwc_p7)
+
+# H3K9me3
+## Statistics: Friedman test
+pwc_p8 <- run_nonparam_stats(norm_counts_H3K9me3, non_significant$transposon)
+## Violin plot
+p8 <- mean_counts_long(norm_counts_H3K9me3, non_significant$transposon) %>%
+  ggplot(panel_aes) +
+  violin_layers +
+#  ggtitle("H3K9me3")+
+  xlab("Not-significant") +
+  pvalues(pwc_p8)
+```
+
+## Down-regulated in RNA-seq
+```{r, results='hide'}
+# Down-regulated in RNA-seq
+significant_down <- read_tsv(here("significant_downregulated_RNAseq.tsv"),
+                             col_names = c("transposon", "start", "end"))
+
+# RNA pol II
+## Statistics: Friedman test
+pwc_p9 <- run_nonparam_stats(norm_counts_pol2,    significant_down$transposon)
+## Violin plot
+p9 <- mean_counts_long(norm_counts_pol2, significant_down$transposon) %>%
+  ggplot(panel_aes) +
+  violin_layers +
+#  ggtitle("RNA pol II")+
+  xlab("Down-regulated") +
+  pvalues(pwc_p9)
+
+# H3K9me3
+## Statistics: Friedman test
+pwc_p10 <- run_nonparam_stats(norm_counts_H3K9me3, significant_down$transposon)
+## Violin plot
+p10 <- mean_counts_long(norm_counts_H3K9me3, significant_down$transposon) %>%
+  ggplot(panel_aes) +
+  violin_layers +
+#  ggtitle("H3K9me3")+
+  xlab("Down-regulated") +
+  pvalues(pwc_p10)
+```
+
+## Up-regulated in RNA-seq
+```{r, results='hide'}
+# Up-regulated in RNA-seq
+## No family-3394, ERV1 consensus added
+significant_up <- read_tsv(here("significant_upregulated_RNAseq.tsv"),
+                           col_names = c("transposon", "start", "end"))
+
+# RNA pol II
+## Statistics: Friedman test
+pwc_p11 <- run_nonparam_stats(norm_counts_pol2,    significant_up$transposon)
+## Violin plot
+p11 <- mean_counts_long(norm_counts_pol2, significant_up$transposon) %>%
+  ggplot(panel_aes) +
+  violin_layers +
+#  ggtitle("RNA pol II")+
+  xlab("Up-regulated") +
+  pvalues(pwc_p11)
+
+# H3K9me3
+## Statistics: Friedman test
+pwc_p12 <- run_nonparam_stats(norm_counts_H3K9me3, significant_up$transposon)
+## Violin plot
+p12 <- mean_counts_long(norm_counts_H3K9me3, significant_up$transposon) %>%
+  ggplot(panel_aes) +
+  violin_layers +
+#  ggtitle("H3K9me3")+
+  xlab("Up-regulated") +
+  pvalues(pwc_p12)
+```
+
+# Volcano/Scatter plots
+## Set-up
+```{r, results='hide'}
+# p-value for DESeq2 analysis
+pvalue <- 0.01
+
+# False Discovery Rate (FDR)
+FDR <- 0.05
+
+# Transposable element groups
+TE_GROUPS <- list(LTR       = c("LTR_Pao","LTR_Gypsy","LTR_Copia","LTR", "AeERV1"),
+                  LINE      = c("LINE","LINE_R1","LINE_RTE","LINE_Penelope","LINE_L1","LINE_I"),
+                  DNA       = c("DNA","DNA_CMC","DNA_hAT","DNA_Kolobok","DNA_MULE","DNA_PIF","DNA_Sola","DNA_TcMar","DNA_Zator"),
+                  RC        = "RC_Helitron",
+                  Satellite = "Satellite",
+                  SINE      = "SINE_tRNA",
+                  Unknown   = "Unknown")
+
+# Colors for the transposable element groups
+TE_COLORS <- c(LTR       = "#0A8974",  
+               LINE      = "#E27520",  
+               DNA       = "#E49C23",  
+               RC        = "#E3072A",  
+               Satellite = "#6362A9",
+               SINE      = "#5FAECC",  
+               Unknown   = "#C2C8E7",
+               NS        = "gray")
+
+# Shared layers for the scatter panels
+ablines   <- list(geom_abline(slope=1, intercept=0),
+                  geom_abline(slope=1, intercept=1),
+                  geom_abline(slope=1, intercept=-1))
+log2scale <- list(scale_x_continuous(trans="log2", limits=c(0.5,NA)),
+                  scale_y_continuous(trans="log2", limits=c(0.5,NA)))
+
+# Shared layers for the volcano panels
+vlines <- list(geom_vline(xintercept=c(-2, 2), linetype="longdash"),
+               geom_hline(yintercept=-log10(0.05), linetype="longdash"))
+
+# Shared theme for the scatter and volcano panels
+base_theme <- theme(legend.title = element_blank(), 
+                    legend.key = element_blank(),
+                    legend.position = "none",
+                    panel.grid.major = element_line("gray97"),
+                    panel.background= element_rect(fill = "white", color = NA),
+                    axis.line=element_line())
+```
+
+## Piwi6 KO vs WT results
+```{r, results='hide'}
+# RNA pol II
+## Extract the pvalue, padj, etc.
+KOvsWT_pol2 <- results(DESeq2_pol2, alpha = pvalue, contrast = c("condition2", "KO", "WT")) %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "transposon")
+write.xlsx(KOvsWT_pol2, "SupplementaryTable_CnT_Pol2.xlsx")
+
+# H3K9me3
+## Extract the pvalue, padj, etc.
+KOvsWT_H3K9me3 <- results(DESeq2_H3K9me3, alpha = pvalue, contrast = c("condition2", "KO", "WT")) %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "transposon")
+write.xlsx(KOvsWT_H3K9me3, "SupplementaryTable_CnT_H3K9me3.xlsx")
+```
+
+## Annotated counts table
+```{r, results='hide'}
+# Extract the normalised counts for the requested condition means, join the DESeq2 statistics,
+# and annotate with TE type, display name, significance call and colour group
+annotate_counts <- function(dds, res, mean_spec) {
+  norm <- counts(dds, normalized = TRUE, replaced = FALSE) %>%
+    as.data.frame()
+  means <- imap(mean_spec, ~ unname(rowMeans(norm[, .x, drop = FALSE])) + 0.5)
+  as_tibble(means) %>%
+    mutate(transposon = rownames(norm), .before = 1) %>%
+    left_join(res, by = "transposon") %>%
+    mutate(padj        = replace_na(padj,1),
+           sign        = ifelse (padj<= FDR, "significant", "NS"),
+           TEtypeSign  = coalesce(str_extract(transposon, "(?<=\\d@)\\w+"),
+                                  str_extract(transposon, "(?<=Consensus_\\d{1,3}_)[A-Za-z0-9]+(?=loci)")),
+           TE_name     = coalesce(str_replace(str_extract(transposon, "family-\\d+@[^@]+$"), 
+                                              "(family-\\d+)@(.+)", "\\2 \\1") %>%
+                                  str_replace("_", "/") %>% 
+                                  str_replace(" ", "\n"),
+                                  str_extract(transposon, "(?<=Consensus_\\d{1,3}_)[A-Za-z0-9]+(?=loci)")),
+           color_group = case_when(sign == "NS"                   ~ "NS",
+                                   TEtypeSign %in% TE_GROUPS$LTR  ~ "LTR",
+                                   TEtypeSign %in% TE_GROUPS$LINE ~ "LINE",
+                                   TEtypeSign %in% TE_GROUPS$DNA  ~ "DNA",
+                                   TEtypeSign %in% TE_GROUPS$RC   ~ "RC",
+                                   TEtypeSign == "Satellite"      ~ "Satellite",
+                                   TEtypeSign == "SINE_tRNA"      ~ "SINE",
+                                   TEtypeSign == "Unknown"        ~ "Unknown",
+                                   TRUE ~ "NS"))}
+
+# Extract normalised counts for KO vs KO and add the pvalue, padj, etc.
+## RNA pol II
+counts_KOvsKO_pol2 <- annotate_counts(
+  DESeq2_pol2, KOvsWT_pol2,
+  list(meanko10 = c("CnT_pol2_ko10-1", "CnT_pol2_ko10-2"),
+       meanko52 = c("CnT_pol2_ko52-1", "CnT_pol2_ko52-2")))
+
+## H3K9me3
+counts_KOvsKO_H3K9me3 <- annotate_counts(
+  DESeq2_H3K9me3, KOvsWT_H3K9me3,
+  list(meanko10 = c("CnT_H3K9me3_ko10-1", "CnT_H3K9me3_ko10-2"),
+       meanko52 = c("CnT_H3K9me3_ko52-1", "CnT_H3K9me3_ko52-2")))
+
+# Extract normalised counts for KO vs WT and add the pvalue, padj, etc.
+## RNA pol II
+counts_KOvsWT_pol2 <- annotate_counts(
+  DESeq2_pol2, KOvsWT_pol2,
+  list(meanWT = c("CnT_pol2_wt-1", "CnT_pol2_wt-2"),
+       meanko = c("CnT_pol2_ko10-1", "CnT_pol2_ko10-2",
+                  "CnT_pol2_ko52-1", "CnT_pol2_ko52-2")))
+
+## H3K9me3
+counts_KOvsWT_H3K9me3 <- annotate_counts(
+  DESeq2_H3K9me3, KOvsWT_H3K9me3,
+  list(meanWT = c("CnT_H3K9me3_wt-1", "CnT_H3K9me3_wt-2"),
+       meanko = c("CnT_H3K9me3_ko10-1", "CnT_H3K9me3_ko10-2",
+                  "CnT_H3K9me3_ko52-1", "CnT_H3K9me3_ko52-2")))
+```
+
+## Scatterplot of KO vs KO
+```{r, results='hide'}
+# RNA pol II
+## Scatter plot
+s1 <- ggplot(counts_KOvsKO_pol2, aes(meanko10, meanko52)) + 
+  geom_point(data = \(df) df[df$sign == "NS", ], size=6, alpha=0.6, colour = "gray") +
+  geom_point(data= \(df) df[df$sign == "significant", ], aes(colour = color_group), size=6, alpha=0.6) +
+  scale_color_manual(values = TE_COLORS)+
+  ablines + 
+  log2scale +
+  ggtitle("RNA pol II")+
+  labs(x = "Piwi6 KO#10 (mean counts + 0.5)", y = "Piwi6 KO#52 (mean counts + 0.5)") +
+  base_theme
+
+# H3K9me3
+## Scatter plot
+s2 <- ggplot(counts_KOvsKO_H3K9me3, aes(meanko10, meanko52)) + 
+  geom_point(data = \(df) df[df$sign == "NS", ], size=6, alpha=0.6, colour = "gray") +
+  geom_point(data= \(df) df[df$sign == "significant", ], aes(colour = color_group), size=6, alpha=0.6) +
+  scale_color_manual(values = TE_COLORS)+
+  ablines + 
+  log2scale +
+  ggtitle("H3K9me3")+
+  labs( x = "Piwi6 KO#10 (mean counts + 0.5)", y = "Piwi6 KO#52 (mean counts + 0.5)") +
+  base_theme
+```
+
+## Volcano plot of KO vs WT
+```{r, results='hide'}
+# RNA pol II
+## Labels: strongly up-regulated repeats, placed to the right of the panel
+label_data <- subset(counts_KOvsWT_pol2, log2FoldChange > 2 & sign == "significant" & -log10(padj) > 20)
+## Volcano plot
+v1 <- ggplot(counts_KOvsWT_pol2, aes(log2FoldChange, -log10(padj)))+
+  geom_point(data = \(df) df[df$sign == "NS", ], colour="gray", size= 6, alpha= 0.6)+
+  geom_point(data = \(df) df[df$sign == "significant", ], aes(colour= color_group), size= 6, alpha= 0.6) +
+  scale_color_manual(values = TE_COLORS) +
+  geom_label_repel(data= label_data, aes(label=TE_name), nudge_x = 2, direction = "y", hjust = 0, xlim=c(max(counts_KOvsWT_pol2$log2FoldChange)+2,Inf),
+                   segment.color="grey40", segment.size=0.4, segment.alpha=0.8, fill=alpha(c("white"), 0.6), colour="black", size=5, label.padding = unit(0.5, "lines"),
+                   box.padding= unit(0.4, "lines"), point.padding = unit(0.2, "lines"), min.segment.length=0, max.overlaps= Inf)+
+  coord_cartesian(xlim=c(-7.5,7.5), clip = "off") +
+  vlines + 
+  labs( x = "Log2 FC (Piwi6 KO/WT)", y = "-Log10 (adjusted P value)") +
+  base_theme +
+  ggtitle("RNA pol II")+
+  theme(plot.margin = margin(5.5, 100, 5.5, 5.5))
+
+# H3K9me3
+## Labels: down-regulated repeats, placed to the left of the panel
+label_data2 <- subset(counts_KOvsWT_H3K9me3, log2FoldChange > -5 & log2FoldChange < -2 & sign == "significant" & -log10(padj) > 5)
+## Volcano plot
+v2 <- ggplot(counts_KOvsWT_H3K9me3, aes(log2FoldChange, -log10(padj)))+
+  geom_point(data = \(df) df[df$sign == "NS", ], colour="gray", size= 6, alpha= 0.6)+
+  geom_point(data = \(df) df[df$sign == "significant", ], aes(colour= color_group), size= 6, alpha= 0.6) +
+  scale_color_manual(values = TE_COLORS) +
+  geom_label_repel(data= label_data2, aes(label=TE_name), nudge_x = 0, direction = "y", hjust = 0, xlim=c(-Inf, min(counts_KOvsWT_H3K9me3$log2FoldChange)-5),
+                   segment.color="grey40", segment.size=0.4, segment.alpha=0.8, fill=alpha(c("white"), 0.6), colour="black", size=5, label.padding = unit(0.5, "lines"),
+                   box.padding= unit(0.4, "lines"), point.padding = unit(0.2, "lines"), min.segment.length=0, max.overlaps= Inf)+
+  coord_cartesian(xlim=c(-7.5,7.5), clip = "off") +
+  vlines + 
+  labs( x = "Log2 FC (Piwi6 KO/WT)", y = "-Log10 (adjusted P value)") +
+  base_theme +
+  ggtitle("H3K9me3")+
+  theme(plot.margin = margin(5.5, 5.5, 5.5, 100))
+```
