@@ -4,9 +4,9 @@
 
 
 <div align="center">
-# **The piRNA pathway mediates transcriptional silencing of**
-# **LTR retrotransposons in ovaries and somatic**
-# **tissues of Aedes mosquitoes**
+## **The piRNA pathway mediates transcriptional silencing of**
+## **LTR retrotransposons in ovaries and somatic**
+## **tissues of Aedes mosquitoes**
 
 
 Ezgi Taşköprü, Nynke B. van Eijk, Femke A. H. van Hout, Marianna Bacchi, Gijs J.
