@@ -1,0 +1,258 @@
+---
+title: "DESeq2 analysis and visualisation"
+author: "Nynke van Eijk"
+contact: "nynke.vaneijk@radboudumc.nl"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Load Packages
+```{r, results='hide'}
+library(here)
+library(patchwork)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(stringr)
+library(purrr)
+library(ggrepel)
+library(DESeq2)
+library(tibble)
+```
+
+# Set-up
+## General settings
+```{r, results='hide'}
+# P-value for DESeq2 analysis
+pvalue <- 0.01
+
+# Minimal count of a TE to be taken along in the statistical analysis
+lowCounts <- 10
+
+# False Discovery Rate (FDR)
+FDR <- 0.05
+
+# Directory holding the count files written by 5_counting.sh
+countsDir <- "counts"
+```
+
+## Sample information
+```{r, results='hide'}
+# Sample list
+## Names are the column labels used below, values are the sample names from 5_counting.sh
+samples <- c(wt1    = "PROseq1_piwi6_wt",
+             wt2    = "PROseq2_piwi6_wt",
+             ko10_1 = "PROseq1_piwi6_ko10",
+             ko10_2 = "PROseq2_piwi6_ko10",
+             ko52_1 = "PROseq1_piwi6_ko52",
+             ko52_2 = "PROseq2_piwi6_ko52")
+
+# Sample groups, used for the condition means further down
+samples_WT   <- c("wt1", "wt2")
+samples_KO   <- c("ko10_1", "ko10_2", "ko52_1", "ko52_2")
+samples_KO10 <- c("ko10_1", "ko10_2")
+samples_KO52 <- c("ko52_1", "ko52_2")
+
+# Column data
+## condition  = WT, KO         (ko10 and ko52 pooled)
+## condition2 = WT, KO10, KO52 (three groups)
+## batch      = the two PRO-seq runs, included as a covariate in both designs
+coldata <- data.frame(row.names  = names(samples),
+                      batch      = factor(c("1", "2", "1", "2", "1", "2")),
+                      condition  = factor(c("WT", "WT", "KO", "KO", "KO", "KO")),
+                      condition2 = factor(c("WT", "WT", "KO10", "KO10", "KO52", "KO52")))
+```
+
+## Load count table
+```{r, results='hide'}
+# Count table
+## Reads the ${sample}_counts.tsv files produced by 5_counting.sh
+countstable <- imap(samples, ~ read_tsv(here(countsDir, paste0(.x, "_counts.tsv")),
+                                        col_names = c("transposon", .y))) %>%
+  reduce(full_join, by = "transposon")
+
+# Count matrix
+count_matrix <- countstable %>%
+  column_to_rownames("transposon") %>%
+  as.matrix()
+```
+
+# DESeq2 analysis
+```{r, results='hide'}
+# Create a DESeq2 DataSet to see the difference between WT and KO (ko10 and ko52 together)
+dds <- DESeqDataSetFromMatrix(countData = count_matrix,
+                              colData   = coldata,
+                              design    = ~condition + batch)
+dds$condition <- relevel(dds$condition, ref = "WT")
+## Drop the TEs with too few reads to test
+dds <- dds[rowSums(counts(dds)) > lowCounts, ]
+
+# Create a DESeq2 DataSet to see the difference between WT, KO10 and KO52
+dds2 <- DESeqDataSetFromMatrix(countData = count_matrix,
+                               colData   = coldata,
+                               design    = ~condition2 + batch)
+dds2$condition2 <- relevel(dds2$condition2, ref = "WT")
+## Drop the TEs with too few reads to test
+dds2 <- dds2[rowSums(counts(dds2)) > lowCounts, ]
+
+# DESeq2
+## DESeq_PROseq  is used for the KO vs WT statistics and the scatter and volcano plots
+DESeq_PROseq  <- DESeq(dds, quiet = TRUE)
+## DESeq2_PROseq is used for the normalised counts in the KO vs KO scatterplot
+DESeq2_PROseq <- DESeq(dds2, quiet = TRUE)
+```
+
+# Volcano/Scatter plots
+## Set-up
+```{r, results='hide'}
+# Transposable element groups
+TE_GROUPS <- list(LTR       = c("LTR_Pao","LTR_Gypsy","LTR_Copia","LTR", "AeERV1"),
+                  LINE      = c("LINE","LINE_R1","LINE_RTE","LINE_Penelope","LINE_L1","LINE_I"),
+                  DNA       = c("DNA","DNA_CMC","DNA_hAT","DNA_Kolobok","DNA_MULE","DNA_PIF","DNA_Sola","DNA_TcMar","DNA_Zator"),
+                  RC        = "RC_Helitron",
+                  Satellite = "Satellite",
+                  SINE      = "SINE_tRNA",
+                  Unknown   = "Unknown")
+
+# Colors for the transposable element groups
+TE_COLORS <- c(LTR       = "#0A8974",
+               LINE      = "#E27520",
+               DNA       = "#E49C23",
+               RC        = "#E3072A",
+               Satellite = "#6362A9",
+               SINE      = "#5FAECC",
+               Unknown   = "#C2C8E7",
+               NS        = "gray")
+
+# Shared layers for the scatter and dot panels
+ablines     <- list(geom_abline(slope=1, intercept=0),
+                    geom_abline(slope=1, intercept=1),
+                    geom_abline(slope=1, intercept=-1))
+log2scale_s <- list(scale_x_continuous(trans="log2", limits=c(0.5,20000)),
+                    scale_y_continuous(trans="log2", limits=c(0.5,20000)))
+log2scale_d <- list(scale_x_continuous(trans="log2", limits=c(0.5,NA)),
+                    scale_y_continuous(trans="log2", limits=c(0.5,NA)))
+
+# Shared layers for the volcano panel
+vlines <- list(geom_vline(xintercept=c(-1, 1), linetype="longdash"),
+               geom_hline(yintercept=-log10(0.05), linetype="longdash"))
+
+# Shared theme for all panels
+base_theme <- theme(legend.title=element_blank(),
+                    panel.background=element_blank(),
+                    axis.line=element_line())
+
+# Shared legend placement, inside the panel
+legend_inside <- theme(legend.position = c(0.03, 0.75),
+                       legend.justification = c(0, 0))
+```
+
+## Piwi6 KO vs WT results
+```{r, results='hide'}
+# Extract the pvalue, padj, etc.
+KOvsWT <- results(DESeq_PROseq, alpha = pvalue, contrast = c("condition", "KO", "WT")) %>%
+  as.data.frame() %>%
+  rownames_to_column("TE") %>%
+  as_tibble()
+```
+
+## Annotated counts tables
+```{r, results='hide'}
+# Extract the normalised counts for the requested condition means, join the DESeq2 statistics,
+# and annotate with TE type, display name, significance call and colour group
+annotate_counts <- function(deseq_obj, res, mean_spec) {
+  norm <- counts(deseq_obj, normalized = TRUE, replaced = FALSE) %>%
+    as.data.frame()
+  means <- imap(mean_spec, ~ unname(rowMeans(norm[, .x, drop = FALSE])) + 0.5)
+  as_tibble(means) %>%
+    mutate(TE = rownames(norm), .before = 1) %>%
+    left_join(res, by = "TE") %>%
+    mutate(padj        = replace_na(padj, 1),
+           sign        = ifelse(padj <= FDR, "significant", "NS"),
+           TEtypeSign  = coalesce(str_extract(TE, "(?<=\\d@)\\w+"),
+                                  str_extract(TE, "(?<=Consensus_\\d{1,3}_)[A-Za-z0-9]+(?=loci)")),
+           TE_name     = coalesce(str_replace(str_extract(TE, "family-\\d+@[^@]+$"),
+                                              "(family-\\d+)@(.+)", "\\2 \\1") %>%
+                                  str_replace("_", "/") %>%
+                                  str_replace(" ", "\n"),
+                                  str_extract(TE, "(?<=Consensus_\\d{1,3}_)[A-Za-z0-9]+(?=loci)")),
+           color_group = case_when(sign == "NS"                   ~ "NS",
+                                   TEtypeSign %in% TE_GROUPS$LTR  ~ "LTR",
+                                   TEtypeSign %in% TE_GROUPS$LINE ~ "LINE",
+                                   TEtypeSign %in% TE_GROUPS$DNA  ~ "DNA",
+                                   TEtypeSign %in% TE_GROUPS$RC   ~ "RC",
+                                   TEtypeSign == "Satellite"      ~ "Satellite",
+                                   TEtypeSign == "SINE_tRNA"      ~ "SINE",
+                                   TEtypeSign == "Unknown"        ~ "Unknown",
+                                   TRUE ~ "NS"))}
+
+# Extract normalised counts for KO vs WT and add the pvalue, padj, etc.
+counts_KOvsWT <- annotate_counts(DESeq_PROseq, KOvsWT,
+                                 list(meanWT = samples_WT,
+                                      meanKO = samples_KO))
+
+# Extract normalised counts for KO vs KO and add the pvalue, padj, etc.
+counts_KOvsKO <- annotate_counts(DESeq2_PROseq, KOvsWT,
+                                 list(meanko10 = samples_KO10,
+                                      meanko52 = samples_KO52))
+```
+
+## Scatterplot of KO vs WT
+```{r, results='hide'}
+s1 <- ggplot(counts_KOvsWT, aes(meanWT, meanKO)) +
+  geom_point(data = \(df) df[df$sign == "NS", ],
+             colour = "gray", size=6, alpha=0.6) +
+  geom_point(data = \(df) df[df$sign == "significant", ],
+             aes(colour = color_group), size=6, alpha=0.6) +
+  scale_color_manual(values = TE_COLORS) +
+  ablines +
+  log2scale_s +
+  labs(x = "Wild-type (mean counts + 0.5)",
+       y = "Piwi6 KO (mean counts + 0.5)") +
+  base_theme +
+  legend_inside +
+  theme(plot.margin = margin(5.5, 5.5, 5.5, 5.5))
+```
+
+## Volcano plot of KO vs WT
+```{r, results='hide'}
+# Labels: strongly up-regulated repeats, placed to the right of the panel
+v1 <- ggplot(counts_KOvsWT, aes(log2FoldChange, -log10(padj))) +
+  geom_point(data = \(df) df[df$sign == "NS", ],
+             colour = "gray", size = 6, alpha = 0.6) +
+  geom_point(data = \(df) df[df$sign == "significant", ],
+             aes(colour = color_group), size = 6, alpha = 0.6) +
+  scale_color_manual(values = TE_COLORS) +
+  geom_label_repel(data = \(df) subset(df, log2FoldChange > 2 & sign == "significant" & -log10(padj) > 0.05), aes(label = TE_name), nudge_x = 2,
+                   direction = "y", hjust = 0, xlim = c(max(counts_KOvsWT$log2FoldChange) + 2, Inf), segment.color = "grey40", segment.size = 0.4,
+                   segment.alpha = 0.8, fill = alpha(c("white"), 0.6), colour = "black", size = 5, label.padding = unit(0.5, "lines"),
+                   box.padding = unit(0.4, "lines"), point.padding = unit(0.2, "lines"), min.segment.length = 0, max.overlaps = Inf) +
+  coord_cartesian(xlim = c(-5, 5), clip = "off") +
+  vlines +
+  labs(x = "Log2 FC (Piwi6 KO/WT)",
+       y = "-Log10 (adjusted P value)") +
+  base_theme +
+  legend_inside +
+  theme(plot.margin = margin(5.5, 100, 5.5, 5.5))
+```
+
+## Scatterplot of KO vs KO
+```{r, results='hide'}
+s2 <- ggplot(counts_KOvsKO, aes(meanko10, meanko52)) +
+  geom_point(data = \(df) df[df$color_group == "NS", ],
+             colour = TE_COLORS["NS"], size = 6, alpha = 0.6) +
+  geom_point(data = \(df) df[df$color_group != "NS", ],
+             aes(colour = color_group), size = 6, alpha = 0.6) +
+  scale_colour_manual(values = TE_COLORS) +
+  ablines +
+  log2scale_d +
+  labs(x = "Piwi6 KO#10 (mean counts + 0.5)",
+       y = "Piwi6 KO#52 (mean counts + 0.5)") +
+  base_theme +
+  legend_inside +
+  theme(plot.margin = margin(5.5, 5.5, 5.5, 5.5))
+```
