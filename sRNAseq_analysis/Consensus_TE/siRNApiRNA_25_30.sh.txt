@@ -1,0 +1,13 @@
+#to add the size of the read as another column to the bed file.
+WORKDIR=`pwd`
+for files in "${WORKDIR}"/*.bed; do
+        FILENAME=$(echo $(basename "${files}") | sed 's/\.bed$//')
+        BED="${FILENAME}".bed
+        SIZE="${FILENAME}".size.bed
+	SIRNA="${FILENAME}".siRNAs.bed
+	PIRNA="${FILENAME}".piRNAs.bed
+        
+	awk 'BEGIN { OFS = "\t" } { $7 = $3 - $2 } 1' "${BED}" > "${SIZE}"
+	cat "${SIZE}" | awk '$7 ==21' > "${SIRNA}"
+	cat "${SIZE}" | awk '$7 >=25 && $7 <=30' > "${PIRNA}"
+done
